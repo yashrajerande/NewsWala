@@ -1,0 +1,4 @@
+# NewsWala additional requirements
+# Install with: pip install -r api/newswala_requirements.txt
+anthropic>=0.40.0
+python-dotenv>=0.14.0
