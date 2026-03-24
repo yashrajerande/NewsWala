@@ -3,14 +3,18 @@
 NewsWala — Top-level runner script.
 
 Run from the project root:
-    python newswala.py                    # Today's digest
-    python newswala.py --date 2025-10-24  # Specific date
-    python newswala.py --save             # Save JSON output
+    python newswala.py                    # Today's digest (terminal output)
+    python newswala.py --telegram         # Generate + send to Telegram
+    python newswala.py --setup-telegram   # Test Telegram connection
+    python newswala.py --save             # Save JSON output to file
     python newswala.py --json-only        # Raw JSON only
 
-Requires:
-    ANTHROPIC_API_KEY environment variable (or .env file in project root)
-    pip install anthropic python-dotenv
+Environment variables:
+    ANTHROPIC_API_KEY       required
+    TELEGRAM_BOT_TOKEN      required for --telegram
+    TELEGRAM_CHAT_ID        required for --telegram
+
+Put these in a .env file in this directory and they'll load automatically.
 """
 
 import sys
@@ -23,9 +27,9 @@ try:
 except ImportError:
     pass
 
-# Make api/newswala importable as a top-level package called 'newswala'
-# by inserting api/ into the path — this bypasses api/__init__.py
-# (which has legacy openai imports from the old gpt3-sandbox codebase)
+# Make api/newswala importable as the top-level 'newswala' package.
+# We insert api/ into sys.path to bypass api/__init__.py which has
+# legacy openai imports from the original gpt3-sandbox codebase.
 _api_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "api")
 if _api_dir not in sys.path:
     sys.path.insert(0, _api_dir)
