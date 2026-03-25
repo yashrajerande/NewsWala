@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Israel–Iran War | Sector Risk Matrix for India</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --surface: #ffffff;
+      --ink: #11202f;
+      --muted: #425466;
+      --line: #d4dde6;
+      --green: #2f8f65;
+      --green-soft: #e9f4ee;
+      --amber: #a98117;
+      --amber-soft: #fff3d4;
+      --red: #9a2f38;
+      --red-soft: #fdecef;
+      --accent: #0f4f73;
+      --shadow: 0 16px 32px rgba(17, 32, 47, 0.08);
+      --radius: 14px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.35;
+    }
+
+    .wrap {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .header {
+      margin-bottom: 18px;
+    }
+
+    .kicker {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: #e9eff5;
+      color: #1f3f5a;
+      font-weight: 600;
+      font-size: 0.9rem;
+      letter-spacing: 0.01em;
+    }
+
+    h1 {
+      margin: 10px 0 6px;
+      font-size: clamp(1.45rem, 2.5vw, 2.4rem);
+      line-height: 1.2;
+      color: #134765;
+      font-weight: 650;
+    }
+
+    .subtitle {
+      margin: 0;
+      color: var(--muted);
+      font-size: clamp(0.95rem, 1.5vw, 1.1rem);
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin: 16px 0 12px;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: white;
+      font-weight: 600;
+      color: #2a3a4d;
+    }
+
+    .dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .dot.high { background: var(--red); }
+    .dot.med { background: var(--amber); }
+    .dot.low { background: var(--green); }
+
+    .table-shell {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: auto;
+      box-shadow: var(--shadow);
+    }
+
+    table {
+      width: 100%;
+      min-width: 1180px;
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+
+    thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #12344c;
+      color: #f5fbff;
+      text-align: left;
+      font-size: 0.94rem;
+      line-height: 1.25;
+      padding: 14px 12px;
+      border-right: 1px solid rgba(255, 255, 255, 0.2);
+      font-weight: 600;
+    }
+
+    thead th:first-child {
+      min-width: 210px;
+      left: 0;
+      z-index: 3;
+    }
+
+    tbody th {
+      position: sticky;
+      left: 0;
+      z-index: 1;
+      background: #f8fbfd;
+      color: #1f3e57;
+      text-align: left;
+      font-size: 1.06rem;
+      padding: 16px 12px;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      font-weight: 600;
+      width: 210px;
+    }
+
+    td {
+      border-bottom: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+      padding: 0;
+      min-width: 138px;
+      vertical-align: stretch;
+    }
+
+    .cell-btn {
+      width: 100%;
+      border: 0;
+      margin: 0;
+      padding: 18px 10px;
+      font: inherit;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      min-height: 68px;
+      transition: transform 0.08s ease, filter 0.15s ease;
+    }
+
+    .cell-btn:focus-visible {
+      outline: 3px solid #145f89;
+      outline-offset: -3px;
+    }
+
+    .cell-btn:hover { filter: brightness(0.98); }
+    .cell-btn:active { transform: scale(0.985); }
+
+    .r-high { background: var(--red-soft); color: #612028; }
+    .r-med { background: var(--amber-soft); color: #654b00; }
+    .r-low { background: var(--green-soft); color: #245e43; }
+
+    .footer-band {
+      margin-top: 14px;
+      border: 1px solid #116a49;
+      background: #1f8a60;
+      color: #f4fffa;
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 1.03rem;
+      font-weight: 530;
+    }
+
+    .source {
+      margin-top: 10px;
+      font-size: 0.87rem;
+      color: #5c6f82;
+    }
+
+    dialog {
+      width: min(840px, calc(100vw - 18px));
+      border: none;
+      border-radius: 16px;
+      padding: 0;
+      box-shadow: 0 28px 48px rgba(0, 0, 0, 0.32);
+    }
+
+    dialog::backdrop { background: rgba(10, 25, 40, 0.55); }
+
+    .panel {
+      background: #fff;
+      padding: 20px;
+    }
+
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: flex-start;
+      border-bottom: 1px solid #e4ebf2;
+      padding-bottom: 12px;
+      margin-bottom: 14px;
+    }
+
+    .panel-title {
+      margin: 0;
+      font-size: clamp(1.1rem, 1.9vw, 1.4rem);
+      line-height: 1.25;
+      color: #163d5a;
+    }
+
+    .close-btn {
+      border: 1px solid #c9d8e6;
+      background: #f8fbff;
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+
+    .badge {
+      display: inline-flex;
+      margin-top: 8px;
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-weight: 700;
+      font-size: 0.86rem;
+      border: 1px solid transparent;
+    }
+
+    .b-high { background: var(--red-soft); color: var(--red); border-color: #e8b7bd; }
+    .b-med { background: var(--amber-soft); color: var(--amber); border-color: #e8d294; }
+    .b-low { background: var(--green-soft); color: var(--green); border-color: #b8d9c8; }
+
+    .grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr;
+    }
+
+    .block {
+      border: 1px solid #dbe5ef;
+      border-radius: 12px;
+      background: #fbfdff;
+      padding: 12px;
+    }
+
+    .block h3 {
+      margin: 0 0 5px;
+      color: #234865;
+      font-size: 0.92rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .block p {
+      margin: 0;
+      color: #223649;
+      font-size: 1rem;
+    }
+
+    @media (max-width: 900px) {
+      .wrap { padding: 12px; }
+      .subtitle { font-size: 0.96rem; }
+      .footer-band { font-size: 0.93rem; }
+      dialog { border-radius: 14px; }
+      .panel { padding: 14px; }
+      .block p { font-size: 0.94rem; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header class="header">
+      <span class="kicker">Board Risk Lens · India Conglomerates</span>
+      <h1>Strait of Hormuz disruption risk matrix (Israel–Iran conflict scenario)</h1>
+      <p class="subtitle">Tap/click any cell for board context: rating rationale, India implication, key datapoint, and one hedge action.</p>
+    </header>
+
+    <section class="legend" aria-label="Rating legend">
+      <span class="chip"><span class="dot high" aria-hidden="true"></span> High impact</span>
+      <span class="chip"><span class="dot med" aria-hidden="true"></span> Medium impact</span>
+      <span class="chip"><span class="dot low" aria-hidden="true"></span> Low impact</span>
+      <span>Availability of alternatives is reversed (Low availability = High risk).</span>
+    </section>
+
+    <section class="table-shell" aria-label="Interactive sector impact table">
+      <table id="riskTable">
+        <thead>
+          <tr>
+            <th scope="col">Sector</th>
+            <th scope="col">Oil-based feedstock</th>
+            <th scope="col">Gas-based feedstock</th>
+            <th scope="col">Non-hydro & misc. feedstock</th>
+            <th scope="col">Logistics & shipping costs</th>
+            <th scope="col">Contractual, insurance & other costs</th>
+            <th scope="col">Availability of alternatives</th>
+            <th scope="col">GDP impact</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <div class="footer-band">Fiscal stress & capital market channels: inflation, interest rates, remittance inflow risk, FDI outflow pressure, and rupee depreciation risk.</div>
+    <p class="source">Source structure adapted faithfully from the provided slide; India datapoints are board-level context additions for decision support.</p>
+  </main>
+
+  <dialog id="detailDialog" aria-labelledby="dialogTitle">
+    <article class="panel">
+      <div class="panel-head">
+        <div>
+          <h2 class="panel-title" id="dialogTitle">Detail</h2>
+          <span id="ratingBadge" class="badge">Rating</span>
+        </div>
+        <button class="close-btn" id="closeDialog" aria-label="Close details">Close</button>
+      </div>
+      <section class="grid" id="detailGrid"></section>
+    </article>
+  </dialog>
+
+  <script>
+    const dimensions = [
+      "Oil-based feedstock",
+      "Gas-based feedstock",
+      "Non-hydro & misc. feedstock",
+      "Logistics & shipping costs",
+      "Contractual, insurance & other costs",
+      "Availability of alternatives",
+      "GDP impact"
+    ];
+
+    const matrix = [
+      {
+        sector: "Refining & Process",
+        datapoint: "~85% of India's crude requirement is imported, with the Gulf historically the dominant source corridor.",
+        hedge: "Lock diversified crude baskets plus floating storage and pre-arranged charter contracts for 90-day continuity.",
+        ratings: ["High", "High", "Med", "High", "High", "Low", "High"]
+      },
+      {
+        sector: "Packaging Materials",
+        datapoint: "India's polymers and packaging chain remains highly sensitive to resin and energy-linked input costs.",
+        hedge: "Shift near-term mix toward recycled/alternate material SKUs and pre-negotiate indexed customer pass-through clauses.",
+        ratings: ["High", "Med", "Med", "Med", "Med", "Med", "Med"]
+      },
+      {
+        sector: "Steel / Cement",
+        datapoint: "Pet coke, coking coal, and freight contribute materially to delivered cost economics in heavy materials.",
+        hedge: "Activate dual-origin fuel strategy and lock rail-coastal multimodal plans to protect delivered margins.",
+        ratings: ["Med", "High", "High", "High", "High", "Low", "High"]
+      },
+      {
+        sector: "Airlines",
+        datapoint: "ATF is typically one of the largest cost lines for Indian carriers, often dominating margin volatility.",
+        hedge: "Use layered ATF hedging, redeploy capacity to resilient domestic routes, and reprice with transparent fuel surcharges.",
+        ratings: ["High", "Low", "Low", "Low", "Low", "Low", "Med"]
+      },
+      {
+        sector: "Electronics",
+        datapoint: "PLI-linked expansion raises exposure to imported components, specialty gases, and metal inputs.",
+        hedge: "Qualify secondary vendors in India/ASEAN and secure helium-copper buffers for critical production nodes.",
+        ratings: ["Low", "Med", "High", "High", "Med", "Med", "Med"]
+      },
+      {
+        sector: "Engineering & Capital Goods",
+        datapoint: "EPC cycles are highly vulnerable to schedule slippage from commodity spikes and force majeure triggers.",
+        hedge: "Insert commodity escalation clauses in bids and preserve optional inventory for long-lead project components.",
+        ratings: ["Low", "Med", "High", "Med", "High", "Med", "High"]
+      },
+      {
+        sector: "MSME",
+        datapoint: "MSMEs account for roughly 30% of India's GDP and have thinner balance-sheet shock absorbers.",
+        hedge: "Set up group-level procurement pools and working-capital backstop lines for tier-2 and tier-3 supplier continuity.",
+        ratings: ["Med", "Med", "Med", "Med", "High", "Low", "High"]
+      }
+    ];
+
+    const whyByDimension = {
+      "Oil-based feedstock": {
+        High: "Direct hydrocarbon linkage means rapid cost pass-through whenever crude dislocates.",
+        Med: "Meaningful but partially manageable via blend shifts and inventory cover.",
+        Low: "Limited direct oil intensity in this sector's core cost stack."
+      },
+      "Gas-based feedstock": {
+        High: "Gas-linked inputs can tighten sharply when regional supply security is questioned.",
+        Med: "Moderate exposure; substitution and contract structures soften immediate impact.",
+        Low: "Sector economics are not structurally gas-dependent in the near term."
+      },
+      "Non-hydro & misc. feedstock": {
+        High: "Specialty minerals/chemicals face disruption, with few immediate domestic replacements.",
+        Med: "Some vulnerable imported inputs, but partial substitutes exist.",
+        Low: "Input basket is relatively resilient to this conflict corridor."
+      },
+      "Logistics & shipping costs": {
+        High: "Freight rates, transit times, and route risk premiums can rise simultaneously.",
+        Med: "Higher landed costs are likely, but network redesign can absorb part of the shock.",
+        Low: "Limited dependence on high-risk maritime corridors."
+      },
+      "Contractual, insurance & other costs": {
+        High: "War-risk insurance and force-majeure frictions materially raise transaction costs.",
+        Med: "Contractual frictions increase, though not yet balance-sheet threatening.",
+        Low: "Commercial terms remain mostly manageable under this scenario."
+      },
+      "Availability of alternatives": {
+        High: "Ample substitute sources/channels keep disruption manageable.",
+        Med: "Alternatives exist but involve cost and lead-time penalties.",
+        Low: "Few viable substitutes in the required time window, elevating vulnerability."
+      },
+      "GDP impact": {
+        High: "Sector stress can transmit broadly via inflation, capex delays, and employment linkages.",
+        Med: "Macro spillovers are meaningful but likely contained with policy/industry response.",
+        Low: "Limited aggregate macro transmission expected from this channel."
+      }
+    };
+
+    const implicationByRating = {
+      High: "Prioritize immediate board-level intervention and weekly risk committee tracking.",
+      Med: "Activate prepared mitigation levers and maintain fortnightly monitoring cadence.",
+      Low: "Monitor for escalation; maintain light-touch contingency planning."
+    };
+
+    const tbody = document.querySelector("#riskTable tbody");
+    const dialog = document.getElementById("detailDialog");
+    const dialogTitle = document.getElementById("dialogTitle");
+    const ratingBadge = document.getElementById("ratingBadge");
+    const detailGrid = document.getElementById("detailGrid");
+
+    function toClassName(rating) {
+      return rating === "High" ? "high" : rating === "Med" ? "med" : "low";
+    }
+
+    function buildTable() {
+      matrix.forEach((row) => {
+        const tr = document.createElement("tr");
+        const th = document.createElement("th");
+        th.scope = "row";
+        th.textContent = row.sector;
+        tr.appendChild(th);
+
+        row.ratings.forEach((rating, i) => {
+          const td = document.createElement("td");
+          const btn = document.createElement("button");
+          btn.className = `cell-btn r-${toClassName(rating)}`;
+          btn.textContent = rating;
+          btn.setAttribute("aria-label", `${row.sector}, ${dimensions[i]}, ${rating} impact. Open details.`);
+          btn.addEventListener("click", () => openDetail(row, dimensions[i], rating));
+          td.appendChild(btn);
+          tr.appendChild(td);
+        });
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    function openDetail(row, dimension, rating) {
+      dialogTitle.textContent = `${row.sector} · ${dimension}`;
+
+      ratingBadge.className = `badge b-${toClassName(rating)}`;
+      ratingBadge.textContent = `${rating} rating`;
+
+      const implicationPrefix = dimension === "Availability of alternatives" && rating === "Low"
+        ? "Low alternatives availability implies elevated operational risk."
+        : implicationByRating[rating];
+
+      const cards = [
+        ["Why this rating", whyByDimension[dimension][rating]],
+        ["Key implication for India", implicationPrefix],
+        ["Single India datapoint", row.datapoint],
+        ["One hedge action", row.hedge]
+      ];
+
+      detailGrid.innerHTML = cards.map(([title, body]) => `
+        <article class="block">
+          <h3>${title}</h3>
+          <p>${body}</p>
+        </article>
+      `).join("");
+
+      if (typeof dialog.showModal === "function") {
+        dialog.showModal();
+      }
+    }
+
+    document.getElementById("closeDialog").addEventListener("click", () => dialog.close());
+    dialog.addEventListener("click", (event) => {
+      const rect = dialog.getBoundingClientRect();
+      const inDialog = rect.top <= event.clientY && event.clientY <= rect.top + rect.height && rect.left <= event.clientX && event.clientX <= rect.left + rect.width;
+      if (!inDialog) dialog.close();
+    });
+
+    buildTable();
+  </script>
+</body>
+</html>
