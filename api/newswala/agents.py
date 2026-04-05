@@ -84,6 +84,9 @@ def news_scout(run_date: str) -> list[dict]:
     """Search the web for candidate news stories and return scored candidates."""
     print("  [news_scout] Searching the web for today's best stories...")
 
+    # web_search_20260209 is a server-side tool — Anthropic runs the search
+    # automatically. No manual tool-use loop needed. Just stream and get
+    # the final message. Handle pause_turn by re-sending to continue.
     tools = [
         {"type": "web_search_20260209", "name": "web_search"},
     ]
@@ -92,49 +95,36 @@ def news_scout(run_date: str) -> list[dict]:
         {
             "role": "user",
             "content": (
-                f"Today is {run_date}. Search the web NOW for the most interesting, "
+                f"Today is {run_date}. Search the web for the most interesting, "
                 f"inspiring news stories from Economics, STEM, and India-relevant current affairs "
-                f"published in the last 24-48 hours. Find stories from credible sources. "
+                f"published in the last 24-48 hours. Search multiple times across different topics. "
+                f"Find stories from credible sources like BBC, Reuters, The Hindu, Mint, ISRO, Nature. "
                 f"Return your findings as a JSON array of 4-6 candidate stories with all required fields."
             ),
         }
     ]
 
-    # Use streaming for the web search agent (can be long)
-    with client.messages.stream(
-        model=MODEL,
-        max_tokens=8000,
-        thinking={"type": "adaptive"},
-        system=NEWS_SCOUT_SYSTEM,
-        tools=tools,
-        messages=messages,
-    ) as stream:
-        response = stream.get_final_message()
-
-    # Handle tool-use loop (web search results come back as tool results)
-    while response.stop_reason == "tool_use":
-        tool_results = []
-        for block in response.content:
-            if block.type == "tool_use":
-                # The web_search tool returns its results automatically; we just relay them
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": json.dumps({"status": "search_executed", "query": block.input.get("query", "")}),
-                })
-
-        messages.append({"role": "assistant", "content": response.content})
-        messages.append({"role": "user", "content": tool_results})
-
+    max_continuations = 5
+    for _ in range(max_continuations):
         with client.messages.stream(
             model=MODEL,
             max_tokens=8000,
-            thinking={"type": "adaptive"},
             system=NEWS_SCOUT_SYSTEM,
             tools=tools,
             messages=messages,
         ) as stream:
             response = stream.get_final_message()
+
+        if response.stop_reason == "end_turn":
+            break
+
+        if response.stop_reason == "pause_turn":
+            # Server-side tool hit its iteration limit — append and continue
+            messages.append({"role": "assistant", "content": response.content})
+            continue
+
+        # Any other stop reason — break and use what we have
+        break
 
     # Extract JSON from the response
     text = ""
