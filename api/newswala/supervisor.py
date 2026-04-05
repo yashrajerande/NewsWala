@@ -23,51 +23,14 @@ from .agents import (
     whatsapp_copywriter,
     memory_cue_designer,
     image_maker,
+    image_generator,
+    cost_tracker,                       # shared singleton — all agents write to this
+    save_history,
     SCOUT_MODEL, WRITE_MODEL, FAST_MODEL,
 )
 
 import anthropic
 client = anthropic.Anthropic()
-
-# ---------------------------------------------------------------------------
-# cost tracker — prints estimated spend after each run
-# Prices per 1M tokens (April 2026)
-# ---------------------------------------------------------------------------
-
-_PRICES = {
-    "claude-sonnet-4-6": {"in": 3.00,  "out": 15.00},
-    "claude-haiku-4-5":  {"in": 1.00,  "out":  5.00},
-    "claude-opus-4-6":   {"in": 5.00,  "out": 25.00},
-}
-
-class CostTracker:
-    """Accumulates token usage across all agents and prints a cost summary."""
-    def __init__(self):
-        self.entries: list[dict] = []
-
-    def add(self, agent: str, model: str, in_tokens: int, out_tokens: int):
-        price = _PRICES.get(model, {"in": 3.0, "out": 15.0})
-        cost  = (in_tokens * price["in"] + out_tokens * price["out"]) / 1_000_000
-        self.entries.append({"agent": agent, "model": model,
-                             "in": in_tokens, "out": out_tokens, "cost": cost})
-
-    def total(self) -> float:
-        return sum(e["cost"] for e in self.entries)
-
-    def print_summary(self):
-        print(f"\n  {'─'*54}")
-        print(f"  {'COST BREAKDOWN':}")
-        print(f"  {'─'*54}")
-        print(f"  {'Agent':<24} {'Model':<18} {'In':>6} {'Out':>6}  {'Cost':>8}")
-        print(f"  {'─'*54}")
-        for e in self.entries:
-            m = e["model"].replace("claude-","").replace("-4-6","4.6").replace("-4-5","4.5")
-            print(f"  {e['agent']:<24} {m:<18} {e['in']:>6} {e['out']:>6}  ${e['cost']:>7.4f}")
-        print(f"  {'─'*54}")
-        t = self.total()
-        print(f"  {'TOTAL this run':<48} ${t:>7.4f}")
-        print(f"  {'Est. monthly (30 days)':<48} ${t*30:>7.2f}")
-        print(f"  {'─'*54}\n")
 
 
 # ---------------------------------------------------------------------------
@@ -149,12 +112,16 @@ def _render(package: dict) -> str:
     for para in wa.get("shorter_variant", "").split("\n"):
         lines.append("  " + (textwrap.fill(para, W - 4) if para.strip() else ""))
 
-    lines.append("\n\n  IMAGE PROMPT  (paste into DALL-E / Midjourney)")
+    lines.append("\n\n  IMAGE  (Hergé/Tintin ligne claire style)")
     lines.append("  " + "─" * (W - 2))
     lines.append(f"  Concept: {img.get('concept','')}")
     lines.append("")
     for chunk in textwrap.wrap(img.get("image_prompt", ""), W - 4):
         lines.append(f"  {chunk}")
+    if img.get("generated_image_url"):
+        lines.append(f"\n  ✅ Generated: {img['generated_image_url'][:70]}...")
+    else:
+        lines.append("\n  ℹ️  No image generated (set OPENAI_API_KEY to enable DALL-E 3)")
 
     lines.append("\n\n  QUALITY CHECKS")
     lines.append("  " + "─" * (W - 2))
@@ -234,7 +201,7 @@ def newswala(run_date: str | None = None, verbose: bool = True) -> dict:  # noqa
     if run_date is None:
         run_date = date.today().isoformat()
 
-    cost = CostTracker()
+    cost_tracker.reset()   # fresh counters each run
 
     print(f"\n{BOLD}🐾  NewsWala  |  {run_date}{RESET}")
     print(f"{DIM}Pipeline: news_scout → family_fit_editor → "
@@ -312,16 +279,41 @@ def newswala(run_date: str | None = None, verbose: bool = True) -> dict:  # noqa
     )
 
     # ------------------------------------------------------------------
-    # 5. image_maker — write the DALL-E / Midjourney prompt
+    # 5. image_maker — write the DALL-E 3 prompt (Hergé/Tintin style)
     # ------------------------------------------------------------------
     try:
         img_raw = image_maker(concept, selected)
     except Exception as e:
         print(f"\n  ⚠️  image_maker failed: {e}")
         img_raw = {"image_prompt": concept.get("concept", ""),
-                   "negative_prompt": "realistic, dark",
-                   "style_tags": ["digital illustration", "cocker spaniel"],
+                   "negative_prompt": "realistic, dark, gradients",
+                   "style_tags": ["tintin", "ligne claire", "cocker spaniel"],
                    "alt_text": "A cocker spaniel with the day's news"}
+
+    # HANDOFF 5 → 6
+    _handoff(
+        "image_maker", "image_generator",
+        f"Prompt ready — generating Hergé/Tintin image via DALL-E 3",
+    )
+
+    # ------------------------------------------------------------------
+    # 6. image_generator — generate actual image via DALL-E 3
+    # Skips gracefully if OPENAI_API_KEY not set.
+    # ------------------------------------------------------------------
+    try:
+        generated = image_generator(img_raw.get("image_prompt", ""))
+    except Exception as e:
+        print(f"\n  ⚠️  image_generator failed: {e}")
+        generated = {}
+
+    # ------------------------------------------------------------------
+    # save history — record selected stories so we don't repeat them
+    # ------------------------------------------------------------------
+    try:
+        save_history(selected, run_date)
+        _step(f"History updated — {len(selected)} story/stories saved to avoid future repeats")
+    except Exception as e:
+        _step(f"Could not save history: {e}")
 
     # ------------------------------------------------------------------
     # assemble final package
@@ -343,16 +335,17 @@ def newswala(run_date: str | None = None, verbose: bool = True) -> dict:  # noqa
         ],
         "whatsapp_output": wa_output,
         "image_output": {
-            "concept":      concept.get("concept", ""),
-            "image_prompt": img_raw.get("image_prompt", ""),
-            "alt_text":     img_raw.get("alt_text", ""),
+            "concept":               concept.get("concept", ""),
+            "image_prompt":          img_raw.get("image_prompt", ""),
+            "alt_text":              img_raw.get("alt_text", ""),
+            "generated_image_url":   generated.get("url", ""),   # "" if DALL-E skipped
         },
         "quality_checks": {},
     }
 
     # HANDOFF → supervisor validates
     _handoff(
-        "image_maker", "newswala (supervisor)",
+        "image_generator", "newswala (supervisor)",
         "All agents done — validating quality and rendering final output",
     )
 
@@ -361,7 +354,7 @@ def newswala(run_date: str | None = None, verbose: bool = True) -> dict:  # noqa
     package["_rendered"] = rendered
     print(rendered)
 
-    # print cost summary
-    cost.print_summary()
+    # print cost summary (agents.py cost_tracker accumulated all Claude usage)
+    cost_tracker.print_summary()
 
     return package

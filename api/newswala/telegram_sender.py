@@ -157,13 +157,36 @@ def send_digest(package: dict, token: Optional[str] = None, chat_id: Optional[st
         except Exception as e:
             print(f"  [telegram] Lesson line send failed: {e}")
 
-    # ── Message 5: Image prompt ──────────────────────────────────────────────
+    # ── Message 5: Image — send actual photo if generated, else send prompt ──
+    image_url = img.get("generated_image_url", "")
     image_prompt = img.get("image_prompt", "")
     concept = img.get("concept", "")
-    if image_prompt:
+
+    if image_url:
+        # Send the actual DALL-E 3 generated image
+        caption = f"🐾 {concept[:180]}" if concept else "🐾 Today's memory image"
+        try:
+            _post(token, "sendPhoto", {
+                "chat_id": chat_id,
+                "photo": image_url,
+                "caption": caption,
+            })
+        except Exception as e:
+            print(f"  [telegram] Photo send failed: {e} — falling back to text prompt")
+            # Fallback: send the text prompt
+            if image_prompt:
+                try:
+                    _post(token, "sendMessage", {
+                        "chat_id": chat_id,
+                        "text": f"🎨 Image prompt (Hergé/Tintin style):\n{'─'*30}\n\n{concept}\n\nPROMPT:\n{image_prompt}",
+                    })
+                except Exception as e2:
+                    print(f"  [telegram] Image prompt fallback also failed: {e2}")
+    elif image_prompt:
+        # No DALL-E key — just send the text prompt
         img_msg = (
-            f"🎨 IMAGE PROMPT for DALL-E / Midjourney\n"
-            f"(Our cocker spaniel as memory cue)\n"
+            f"🎨 Image prompt (Hergé/Tintin style)\n"
+            f"Add OPENAI_API_KEY to .env to auto-generate\n"
             f"{'─'*30}\n\n"
             f"{concept}\n\n"
             f"PROMPT:\n{image_prompt}"
