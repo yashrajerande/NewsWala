@@ -143,34 +143,42 @@ def news_scout(run_date: str) -> list[dict]:
     text     = ""
     n_search = 0
 
-    for attempt in range(3):   # max 3 server passes (keep it fast)
+    for attempt in range(2):   # max 2 server passes
         with client.messages.stream(
             model=SCOUT_MODEL, max_tokens=3000,
             system=_SCOUT_SYSTEM, tools=tools, messages=messages,
         ) as stream:
             for event in stream:
-                # show each search query as it fires
+                # show each web search query as it fires (skip empty input blocks)
                 if (event.type == "content_block_start"
                         and hasattr(event, "content_block")
                         and getattr(event.content_block, "type", "") == "server_tool_use"):
-                    q = getattr(event.content_block, "input", {})
-                    query_str = q.get("query", str(q)) if isinstance(q, dict) else str(q)
-                    n_search += 1
-                    _step(f"🌐  search #{n_search}: \"{query_str}\"")
+                    inp = getattr(event.content_block, "input", None)
+                    if isinstance(inp, dict):
+                        query_str = inp.get("query", "").strip()
+                    elif inp:
+                        query_str = str(inp).strip()
+                    else:
+                        query_str = ""
+                    if query_str and query_str != "{}":
+                        n_search += 1
+                        _step(f"🌐  search #{n_search}: \"{query_str}\"")
 
                 elif (event.type == "content_block_delta"
                         and hasattr(event, "delta")
                         and getattr(event.delta, "type", "") == "text_delta"):
-                    chunk = event.delta.text
+                    chunk = event.delta.text or ""
                     text += chunk
                     if not text.lstrip().startswith("["):
                         _stream(chunk)
 
             response = stream.get_final_message()
 
+        # guard against None text blocks before string membership test
         for b in response.content:
-            if hasattr(b, "text") and b.text not in text:
-                text += b.text
+            b_text = getattr(b, "text", None)
+            if b_text and b_text not in text:
+                text += b_text
 
         if response.stop_reason == "end_turn":
             break
@@ -233,8 +241,9 @@ def family_fit_editor(candidates: list[dict]) -> list[dict]:
         response = stream.get_final_message()
 
     for b in response.content:
-        if hasattr(b, "text") and b.text not in text:
-            text += b.text
+        b_text = getattr(b, "text", None)
+        if b_text and b_text not in text:
+            text += b_text
 
     print("\n")
     selected = _parse_json(text, shape="array")
@@ -297,8 +306,9 @@ def whatsapp_copywriter(selected_stories: list[dict]) -> dict:
         response = stream.get_final_message()
 
     for b in response.content:
-        if hasattr(b, "text") and b.text not in text:
-            text += b.text
+        b_text = getattr(b, "text", None)
+        if b_text and b_text not in text:
+            text += b_text
 
     print("\n")
     result = _parse_json(text, shape="object")
@@ -352,8 +362,9 @@ def memory_cue_designer(selected_stories: list[dict]) -> dict:
         response = stream.get_final_message()
 
     for b in response.content:
-        if hasattr(b, "text") and b.text not in text:
-            text += b.text
+        b_text = getattr(b, "text", None)
+        if b_text and b_text not in text:
+            text += b_text
 
     print("\n")
     result = _parse_json(text, shape="object")
@@ -401,8 +412,9 @@ def image_maker(concept: dict, selected_stories: list[dict]) -> dict:
         response = stream.get_final_message()
 
     for b in response.content:
-        if hasattr(b, "text") and b.text not in text:
-            text += b.text
+        b_text = getattr(b, "text", None)
+        if b_text and b_text not in text:
+            text += b_text
 
     print("\n")
     result = _parse_json(text, shape="object")
