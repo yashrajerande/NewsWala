@@ -199,16 +199,30 @@ def send_digest(package: dict, token: Optional[str] = None, chat_id: Optional[st
         except Exception as e:
             print(f"  [telegram] Image prompt send failed: {e}")
 
-    # ── Message 6: Quality summary ───────────────────────────────────────────
-    confidence = qc.get("factual_confidence", "medium")
-    confidence_icon = "✅" if confidence == "high" else "⚠️"
+    # ── Message 6: Quality + cost summary ────────────────────────────────────
+    confidence   = qc.get("factual_confidence", "medium")
+    run_cost     = package.get("run_cost", 0.0)
+    monthly_est  = run_cost * 30
+
+    # Cost alert thresholds
+    if run_cost > 0.50:
+        cost_icon = "🚨 HIGH"
+    elif run_cost > 0.15:
+        cost_icon = "⚠️  WATCH"
+    else:
+        cost_icon = "✅"
+
     summary = (
         f"{'─'*30}\n"
-        f"{confidence_icon} Factual confidence: {confidence}\n"
+        f"{'✅' if confidence == 'high' else '⚠️'} Factual confidence: {confidence}\n"
         f"{'✅' if qc.get('age_appropriate') else '❌'} Age appropriate\n"
         f"{'✅' if qc.get('whatsapp_length_ok') else '⚠️'} WhatsApp length OK\n"
-        f"{'✅' if qc.get('contains_cocker_spaniel') else '❌'} Cocker spaniel in image\n"
+        f"{'─'*30}\n"
+        f"{cost_icon} Run cost: ${run_cost:.4f}  (~${monthly_est:.2f}/month)\n"
     )
+    if run_cost > 0.15:
+        summary += f"⚠️  Cost above target — check GitHub Actions log\n"
+
     try:
         _post(token, "sendMessage", {
             "chat_id": chat_id,

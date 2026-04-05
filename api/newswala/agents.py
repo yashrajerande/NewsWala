@@ -11,7 +11,7 @@ Model assignments:
 ┌──────────────────────┬──────────────────┬──────────────────────────────┐
 │ Agent                │ Model            │ Why                          │
 ├──────────────────────┼──────────────────┼──────────────────────────────┤
-│ news_scout           │ Sonnet 4.6       │ needs web search tool        │
+│ news_scout           │ Haiku 4.5        │ RSS fetch + scoring (cheap)  │
 │ family_fit_editor    │ Haiku 4.5        │ structured filtering, cheap  │
 │ whatsapp_copywriter  │ Sonnet 4.6       │ needs writing quality        │
 │ memory_cue_designer  │ Haiku 4.5        │ simple creative task         │
@@ -21,22 +21,30 @@ Model assignments:
 Pricing ($/1M tokens):  Sonnet: $3 in / $15 out   Haiku: $1 in / $5 out
 NO adaptive thinking — thinking tokens multiply output cost 5-10x.
 
-Estimated daily cost:  ~$0.05-0.08
-Estimated monthly:     ~$1.50-2.50  (well within $5 budget)
+Estimated daily cost:  ~$0.01-0.02  (was $1.50+ when using web_search)
+Estimated monthly:     ~$0.30-0.60  (well within $5 budget)
+
+Why RSS instead of web_search:
+  web_search returns full page content → 300k-500k tokens/run → ~$1.50/run
+  RSS returns headline + summary only → ~3k tokens/run → ~$0.003/run
 """
 
 import json
+import re
 import sys
-from datetime import date, timedelta
+import urllib.request
+import xml.etree.ElementTree as ET
+from datetime import date, datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 import anthropic
 
 from .config import MAX_STORIES
 
 # --- models ------------------------------------------------------------------
-SCOUT_MODEL = "claude-sonnet-4-6"   # web search + research
-WRITE_MODEL = "claude-sonnet-4-6"   # WhatsApp copy needs quality
-FAST_MODEL  = "claude-haiku-4-5"    # filtering, image prompts — cheap & fast
+SCOUT_MODEL = "claude-haiku-4-5"   # RSS scoring — no web search needed → cheap
+WRITE_MODEL = "claude-sonnet-4-6"  # WhatsApp copy needs quality
+FAST_MODEL  = "claude-haiku-4-5"   # filtering, image prompts — cheap & fast
 
 client = anthropic.Anthropic()
 
@@ -213,123 +221,201 @@ def _parse_json(text: str, shape: str = "object") -> dict | list:
 
 # ---------------------------------------------------------------------------
 # Agent 1 — news_scout
-# Strict date-filtered searches, equal spread across all 3 categories,
-# history-aware to avoid repeating stories.
-# Cost: ~$0.03-0.05/day
+# Fetches RSS feeds from trusted sources (free, no tokens used for fetching).
+# Passes headlines to Haiku for scoring — ~3k tokens vs 300k+ with web_search.
+# Cost: ~$0.003/day  (was ~$1.50/day with web_search)
 # ---------------------------------------------------------------------------
 
-# System prompts are loaded from agents/<folder>/system_prompt.txt
-# Edit those files directly to change agent behaviour — no Python needed.
-_SCOUT_SYSTEM  = _load_prompt("01_news_scout")
+# RSS feeds by category. Priority sources listed first.
+# Edit this dict to add/remove sources — no system_prompt changes needed.
+_RSS_FEEDS = {
+    "Economics": [
+        ("Bloomberg",          "https://feeds.bloomberg.com/markets/news.rss"),
+        ("Financial Times",    "https://www.ft.com/rss/home"),
+        ("Economic Times",     "https://economictimes.indiatimes.com/news/economy/rss"),
+        ("The Economist",      "https://www.economist.com/finance-and-economics/rss.xml"),
+        ("Business Standard",  "https://www.business-standard.com/rss/home_page_top_stories.rss"),
+        ("Reuters Business",   "https://feeds.reuters.com/reuters/businessNews"),
+    ],
+    "STEM": [
+        ("MIT Technology Review", "https://www.technologyreview.com/feed/"),
+        ("Reuters Technology",    "https://feeds.reuters.com/reuters/technologyNews"),
+        ("The Hindu Science",     "https://www.thehindu.com/sci-tech/feed/?service=rss"),
+        ("BBC Science",           "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml"),
+    ],
+    "Current Affairs": [
+        ("Harvard Business Review", "https://feeds.hbr.org/harvardbusiness"),
+        ("The Economist",           "https://www.economist.com/the-world-this-week/rss.xml"),
+        ("The Hindu",               "https://www.thehindu.com/news/national/feed/?service=rss"),
+        ("BBC India",               "https://feeds.bbci.co.uk/news/world/asia/india/rss.xml"),
+        ("Reuters India",           "https://feeds.reuters.com/reuters/INtopNews"),
+    ],
+}
+
+# Priority sources get a credibility bonus in scoring
+_PRIORITY_SOURCES = {
+    "Bloomberg", "Financial Times", "Economic Times",
+    "MIT Technology Review", "Harvard Business Review", "The Economist",
+}
+
+_SCOUT_SYSTEM = _load_prompt("01_news_scout")
+
+
+def _fetch_rss(url: str, source: str, category: str, cutoff: datetime) -> list[dict]:
+    """
+    Fetch one RSS feed and return stories published after cutoff.
+    Pure stdlib — no tokens used, no API calls.
+    """
+    def _tag(text: str, tag: str) -> str:
+        m = re.search(
+            rf'<{tag}[^>]*>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</{tag}>',
+            text, re.DOTALL | re.IGNORECASE,
+        )
+        return m.group(1).strip() if m else ""
+
+    try:
+        req = urllib.request.Request(
+            url, headers={"User-Agent": "Mozilla/5.0 (NewsWala/2.0 RSS Reader)"}
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            content = resp.read().decode("utf-8", errors="replace")
+    except Exception as e:
+        _step(f"  ✗ {source}: {e}")
+        return []
+
+    items = re.findall(r'<item[^>]*>(.*?)</item>', content, re.DOTALL | re.IGNORECASE)
+    if not items:
+        items = re.findall(r'<entry[^>]*>(.*?)</entry>', content, re.DOTALL | re.IGNORECASE)
+
+    stories = []
+    for item in items[:10]:
+        title = _tag(item, "title")
+        link  = _tag(item, "link") or _tag(item, "guid")
+        desc  = _tag(item, "description") or _tag(item, "summary")
+        pub   = _tag(item, "pubDate") or _tag(item, "published") or _tag(item, "updated")
+
+        if not title:
+            continue
+
+        desc = re.sub(r'<[^>]+>', '', desc)[:300].strip()
+
+        pub_str = "recent"
+        try:
+            pub_dt = parsedate_to_datetime(pub)
+            if pub_dt.tzinfo is None:
+                pub_dt = pub_dt.replace(tzinfo=timezone.utc)
+            if pub_dt < cutoff:
+                continue
+            pub_str = pub_dt.strftime("%Y-%m-%d")
+        except Exception:
+            pass   # include story if date unparseable
+
+        stories.append({
+            "title":          title,
+            "url":            link,
+            "description":    desc,
+            "source":         source,
+            "category":       category,
+            "published_date": pub_str,
+            "priority":       source in _PRIORITY_SOURCES,
+        })
+
+    return stories
 
 
 def news_scout(run_date: str) -> list[dict]:
     """
-    Search live web for today's candidate stories.
-    - Searches are date-stamped to get only fresh news
-    - Explicitly covers all 3 categories in separate searches
-    - Filters out stories already sent (from history file)
+    Fetch headlines from RSS feeds, then use Haiku to score and select.
+    No web_search calls → no runaway token costs.
     """
-    _bar(f"🔍  news_scout  |  {run_date}  |  {SCOUT_MODEL}", CYAN)
+    _bar(f"📡  news_scout  |  {run_date}  |  RSS + {SCOUT_MODEL}", CYAN)
 
-    # load history to tell Claude what to avoid
     history = load_history()
-    avoid_titles = [h["title"] for h in history[-10:]]  # last 10 sent stories
+    avoid_titles = {h["title"].lower()[:60] for h in history[-10:]}
     if avoid_titles:
-        _step(f"History: avoiding {len(avoid_titles)} recently sent stories")
-        for t in avoid_titles:
-            _step(f"  ↳ skip: {t[:70]}")
+        _step(f"History: will skip {len(avoid_titles)} recently sent stories")
 
-    avoid_block = ""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
+
+    # --- fetch all RSS feeds (no AI, no cost) --------------------------------
+    all_stories: list[dict] = []
+    for category, feeds in _RSS_FEEDS.items():
+        _step(f"Fetching {category}...")
+        cat_count = 0
+        seen_titles: set[str] = set()
+        for source, url in feeds:
+            stories = _fetch_rss(url, source, category, cutoff)
+            for s in stories:
+                key = s["title"].lower()[:60]
+                if key not in seen_titles and key not in avoid_titles:
+                    seen_titles.add(key)
+                    all_stories.append(s)
+                    cat_count += 1
+            if stories:
+                _step(f"  ✓ {source}: {len(stories)} fresh stories")
+        _step(f"  → {cat_count} unique stories in {category}")
+
+    _ok(f"Total: {len(all_stories)} fresh stories fetched via RSS (0 tokens used)")
+
+    if not all_stories:
+        _step("⚠️  No RSS stories found — returning empty")
+        return []
+
+    # --- ask Haiku to score and select best 4-6 (tiny token cost) -----------
+    _step(f"Scoring with {SCOUT_MODEL} (~{len(all_stories[:25])} stories)...")
+
+    story_list = "\n\n".join(
+        f"[{i+1}] [{s['category']}] {'⭐ ' if s['priority'] else ''}{s['source']}\n"
+        f"Title: {s['title']}\n"
+        f"Desc:  {s['description']}\n"
+        f"Date:  {s['published_date']}  URL: {s['url']}"
+        for i, s in enumerate(all_stories[:25])
+    )
+
+    avoid_note = ""
     if avoid_titles:
-        avoid_block = (
-            f"\n\nAVOID these topics — already sent recently:\n"
-            + "\n".join(f"- {t}" for t in avoid_titles)
-        )
+        avoid_note = f"\n\nALREADY SENT RECENTLY — do not select:\n" + \
+                     "\n".join(f"- {t}" for t in list(avoid_titles)[:10])
 
-    messages = [{"role": "user", "content": (
-        f"Today's date: {run_date}.\n\n"
-        f"Search for news published ON {run_date} or yesterday only.\n\n"
-        f"Do EXACTLY these 3 searches — one per category:\n"
-        f"1. Economics & Business: India economy, policy, startups, trade, RBI, budget news {run_date}\n"
-        f"2. STEM & Science: India space, AI, science breakthrough, technology, health {run_date}\n"
-        f"3. Current Affairs & Policy: India governance, education reform, geopolitics, "
-        f"   social progress, India world stage {run_date}\n\n"
-        f"Use sources: The Hindu, LiveMint, Reuters, BBC, Business Standard, ISRO, PIB.\n"
-        f"Return a JSON array of 4-6 stories with at least 1 from each category."
-        f"{avoid_block}"
-    )}]
+    text = ""
+    with client.messages.stream(
+        model=SCOUT_MODEL, max_tokens=3000,
+        system=_SCOUT_SYSTEM,
+        messages=[{"role": "user", "content": (
+            f"Today: {run_date}. ⭐ marks priority sources.\n\n"
+            f"Stories to score:\n{story_list}"
+            f"{avoid_note}\n\n"
+            f"Return JSON array of the best 4-6 stories (at least 1 per category)."
+        )}],
+    ) as stream:
+        for event in stream:
+            if (event.type == "content_block_delta"
+                    and hasattr(event, "delta")
+                    and getattr(event.delta, "type", "") == "text_delta"):
+                text += event.delta.text or ""
+                if not text.lstrip().startswith("["):
+                    _stream(event.delta.text or "")
+        response = stream.get_final_message()
 
-    # max_uses=3 caps web searches at exactly 3 (one per category).
-    # Without this cap the model runs 10-20+ searches → 300k+ tokens → $1+/run.
-    tools    = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 3}]
-    text     = ""
-    n_search = 0
+    cost_tracker.add("news_scout", SCOUT_MODEL, response.usage)
 
-    for attempt in range(1):  # single pass — max_uses handles the search limit
-        with client.messages.stream(
-            model=SCOUT_MODEL, max_tokens=3000,
-            system=_SCOUT_SYSTEM, tools=tools, messages=messages,
-        ) as stream:
-            for event in stream:
-                if (event.type == "content_block_start"
-                        and hasattr(event, "content_block")
-                        and getattr(event.content_block, "type", "") == "server_tool_use"):
-                    inp = getattr(event.content_block, "input", None)
-                    query_str = ""
-                    if isinstance(inp, dict):
-                        query_str = inp.get("query", "").strip()
-                    elif inp:
-                        query_str = str(inp).strip()
-                    if query_str and query_str not in ("{}", ""):
-                        n_search += 1
-                        _step(f"🌐  search #{n_search}: \"{query_str}\"")
-
-                elif (event.type == "content_block_delta"
-                        and hasattr(event, "delta")
-                        and getattr(event.delta, "type", "") == "text_delta"):
-                    chunk = event.delta.text or ""
-                    text += chunk
-                    if not text.lstrip().startswith("["):
-                        _stream(chunk)
-
-            response = stream.get_final_message()
-
-        cost_tracker.add("news_scout", SCOUT_MODEL, response.usage)
-
-        for b in response.content:
-            b_text = getattr(b, "text", None)
-            if b_text and b_text not in text:
-                text += b_text
-
-        if response.stop_reason == "end_turn":
-            break
-        if response.stop_reason == "pause_turn":
-            messages.append({"role": "assistant", "content": response.content})
-            _step("Server paused — continuing...")
-            continue
-        break
+    for b in response.content:
+        b_text = getattr(b, "text", None)
+        if b_text and b_text not in text:
+            text += b_text
 
     print()
     candidates = _parse_json(text, shape="array")
 
-    # show category spread
-    categories = {}
-    for s in candidates:
-        c = s.get("category", "Unknown")
-        categories[c] = categories.get(c, 0) + 1
-
-    _ok(f"Found {len(candidates)} candidate stories:")
+    _ok(f"Selected {len(candidates)} candidate stories:")
     for i, s in enumerate(candidates, 1):
         score = s.get("scores", {}).get("total", "?")
-        pub   = s.get("published_date", "")
-        print(f"    {DIM}[{i}] [{s.get('category','?')}] {s.get('title','?')[:60]}  "
-              f"score:{score}/80  {pub}{RESET}")
+        print(f"    {DIM}[{i}] [{s.get('category','?')}] {s.get('title','?')[:65]}"
+              f"  score:{score}  {s.get('published_date','')}{RESET}")
 
-    # warn if a category is missing
     for cat in ["Economics", "STEM", "Current Affairs"]:
-        if not any(cat.lower() in s.get("category","").lower() for s in candidates):
-            _step(f"⚠️  No {cat} story found — consider re-running")
+        if not any(cat.lower() in s.get("category", "").lower() for s in candidates):
+            _step(f"⚠️  No {cat} story found")
 
     return candidates
 

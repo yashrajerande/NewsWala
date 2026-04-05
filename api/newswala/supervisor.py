@@ -341,6 +341,7 @@ def newswala(run_date: str | None = None, verbose: bool = True) -> dict:  # noqa
             "generated_image_url":   generated.get("url", ""),   # "" if DALL-E skipped
         },
         "quality_checks": {},
+        "run_cost":        cost_tracker.total(),   # passed to Telegram for cost alert
     }
 
     # HANDOFF → supervisor validates

@@ -5,6 +5,9 @@ on:
     - cron: "30 0 * * *"   # 00:30 UTC = 6:00 AM IST every day
   workflow_dispatch:         # also lets you trigger it manually from GitHub
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   send-digest:
     runs-on: ubuntu-latest
