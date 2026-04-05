@@ -72,6 +72,20 @@ def _load_prompt(agent_folder: str) -> str:
         )
 
 
+def _load_skill(skill_name: str) -> str:
+    """
+    Load a skill from agents/skills/<skill-name>.md.
+    Skills are injected into agent system prompts at runtime.
+    Add new skills by dropping a .md file into agents/skills/.
+    """
+    p = _AGENTS_DIR / "skills" / f"{skill_name}.md"
+    try:
+        return p.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        _step(f"⚠️  Skill not found: {skill_name} — running without it")
+        return ""
+
+
 # ---------------------------------------------------------------------------
 # terminal helpers
 # ---------------------------------------------------------------------------
@@ -575,15 +589,22 @@ _IMG_SYSTEM = _load_prompt("05_image_maker")
 
 
 def image_maker(concept: dict, selected_stories: list[dict]) -> dict:
-    """Write the image prompt using the Tintin type image skill."""
+    """Write the image prompt — injects the tintin-type-image skill at runtime."""
     _bar(f"🖼️   image_maker  |  {FAST_MODEL}", GREEN)
-    _step("Writing prompt (skill: Tintin type image)...")
+    _step("Loading skill: tintin-type-image...")
+
+    skill = _load_skill("tintin-type-image")
+    system = _IMG_SYSTEM
+    if skill:
+        system = f"{_IMG_SYSTEM}\n\n---\n## SKILL: Tintin type image\n{skill}"
+        _step("Skill injected into system prompt ✓")
+
     print(f"\n  {GREEN}Prompt:{RESET}\n  {'─'*50}\n  ", end="")
 
     text = ""
     with client.messages.stream(
-        model=FAST_MODEL, max_tokens=500,
-        system=_IMG_SYSTEM,
+        model=FAST_MODEL, max_tokens=600,
+        system=system,
         messages=[{"role": "user", "content":
                    f"Concept:\n{json.dumps(concept, indent=2)}\n"
                    f"Story titles: {[s.get('title','') for s in selected_stories]}"}],
