@@ -200,17 +200,16 @@ def send_digest(package: dict, token: Optional[str] = None, chat_id: Optional[st
             print(f"  [telegram] Image prompt send failed: {e}")
 
     # ── Message 6: Quality + cost summary ────────────────────────────────────
-    confidence   = qc.get("factual_confidence", "medium")
-    run_cost     = package.get("run_cost", 0.0)
-    monthly_est  = run_cost * 30
+    confidence  = qc.get("factual_confidence", "medium")
+    run_cost    = package.get("run_cost", 0.0)
+    monthly     = package.get("monthly_spend", {})
+    month_total = monthly.get("total_usd", run_cost)
+    month_runs  = monthly.get("runs", 1)
+    budget      = monthly.get("budget_usd", 5.0)
+    month_pct   = (month_total / budget * 100) if budget else 0
 
-    # Cost alert thresholds
-    if run_cost > 0.50:
-        cost_icon = "🚨 HIGH"
-    elif run_cost > 0.15:
-        cost_icon = "⚠️  WATCH"
-    else:
-        cost_icon = "✅"
+    run_icon    = "🚨 HIGH" if run_cost > 0.50 else ("⚠️  WATCH" if run_cost > 0.15 else "✅")
+    budget_icon = "🚨" if month_pct >= 90 else ("⚠️" if month_pct >= 60 else "✅")
 
     summary = (
         f"{'─'*30}\n"
@@ -218,10 +217,14 @@ def send_digest(package: dict, token: Optional[str] = None, chat_id: Optional[st
         f"{'✅' if qc.get('age_appropriate') else '❌'} Age appropriate\n"
         f"{'✅' if qc.get('whatsapp_length_ok') else '⚠️'} WhatsApp length OK\n"
         f"{'─'*30}\n"
-        f"{cost_icon} Run cost: ${run_cost:.4f}  (~${monthly_est:.2f}/month)\n"
+        f"{run_icon} This run: ${run_cost:.4f}\n"
+        f"{budget_icon} This month: ${month_total:.4f} / ${budget:.2f} "
+        f"({month_pct:.0f}%)  —  {month_runs} run{'s' if month_runs != 1 else ''}\n"
     )
     if run_cost > 0.15:
-        summary += f"⚠️  Cost above target — check GitHub Actions log\n"
+        summary += "⚠️  Run cost above target — check GitHub Actions log\n"
+    if month_pct >= 90:
+        summary += "🚨 Monthly budget nearly exhausted!\n"
 
     try:
         _post(token, "sendMessage", {

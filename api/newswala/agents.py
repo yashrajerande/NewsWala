@@ -53,6 +53,11 @@ client = anthropic.Anthropic()
 _HISTORY_FILE = Path(__file__).resolve().parents[2] / "newswala_history.json"
 _HISTORY_DAYS = 14   # remember stories from the last 14 days
 
+# --- monthly spend tracker ---------------------------------------------------
+# Stored at project root: ~/NewsWala/newswala_monthly_spend.json
+_MONTHLY_SPEND_FILE = Path(__file__).resolve().parents[2] / "newswala_monthly_spend.json"
+_MONTHLY_BUDGET_USD = 5.00
+
 # --- agent directory — system prompts live here, editable without Python -----
 # Agents live in ErandeNewsCorp/ at the repo root (visible on GitHub as employees)
 # From api/newswala/agents.py → up 2 levels → repo root → ErandeNewsCorp/agents
@@ -247,6 +252,33 @@ def save_history(stories: list[dict], run_date: str):
         _step(f"Could not save history: {e}")
 
 
+def load_monthly_spend() -> dict:
+    """Load the monthly spend ledger keyed by YYYY-MM."""
+    if not _MONTHLY_SPEND_FILE.exists():
+        return {}
+    try:
+        return json.loads(_MONTHLY_SPEND_FILE.read_text())
+    except Exception:
+        return {}
+
+
+def record_monthly_spend(run_cost: float, run_date: str) -> dict:
+    """Accumulate this run's cost into the monthly ledger. Returns the updated month entry."""
+    month_key = run_date[:7]
+    ledger = load_monthly_spend()
+    entry = ledger.get(month_key, {"total_usd": 0.0, "runs": 0, "last_run": ""})
+    entry["total_usd"]  = round(entry["total_usd"] + run_cost, 6)
+    entry["runs"]       = entry["runs"] + 1
+    entry["last_run"]   = run_date
+    entry["budget_usd"] = _MONTHLY_BUDGET_USD
+    ledger[month_key]   = entry
+    try:
+        _MONTHLY_SPEND_FILE.write_text(json.dumps(ledger, indent=2, ensure_ascii=False))
+    except Exception as e:
+        _step(f"Could not save monthly spend: {e}")
+    return entry
+
+
 # ---------------------------------------------------------------------------
 # helper: pull JSON out of a response that may contain prose around it
 # ---------------------------------------------------------------------------
@@ -282,36 +314,61 @@ def _parse_json(text: str, shape: str = "object") -> dict | list:
 # Cost: ~$0.003/day  (was ~$1.50/day with web_search)
 # ---------------------------------------------------------------------------
 
-# RSS feeds by category. Priority sources listed first.
-# Edit this dict to add/remove sources — no system_prompt changes needed.
-_RSS_FEEDS = {
-    "Economics": [
-        ("Bloomberg",          "https://feeds.bloomberg.com/markets/news.rss"),
-        ("Financial Times",    "https://www.ft.com/rss/home"),
-        ("Economic Times",     "https://economictimes.indiatimes.com/news/economy/rss"),
-        ("The Economist",      "https://www.economist.com/finance-and-economics/rss.xml"),
-        ("Business Standard",  "https://www.business-standard.com/rss/home_page_top_stories.rss"),
-        ("Reuters Business",   "https://feeds.reuters.com/reuters/businessNews"),
-    ],
-    "STEM": [
-        ("MIT Technology Review", "https://www.technologyreview.com/feed/"),
-        ("Reuters Technology",    "https://feeds.reuters.com/reuters/technologyNews"),
-        ("The Hindu Science",     "https://www.thehindu.com/sci-tech/feed/?service=rss"),
-        ("BBC Science",           "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml"),
-    ],
-    "Current Affairs": [
-        ("Harvard Business Review", "https://feeds.hbr.org/harvardbusiness"),
-        ("The Economist",           "https://www.economist.com/the-world-this-week/rss.xml"),
-        ("The Hindu",               "https://www.thehindu.com/news/national/feed/?service=rss"),
-        ("BBC India",               "https://feeds.bbci.co.uk/news/world/asia/india/rss.xml"),
-        ("Reuters India",           "https://feeds.reuters.com/reuters/INtopNews"),
-    ],
+# RSS feeds — split into primary and backup tiers per category.
+# Primary feeds are tried first. If fewer than _MIN_STORIES_PER_CATEGORY stories
+# are collected, backup feeds are tried automatically at runtime.
+_MIN_STORIES_PER_CATEGORY = 3
+
+_RSS_FEEDS: dict[str, dict[str, list[tuple[str, str]]]] = {
+    "Economics": {
+        "primary": [
+            ("Bloomberg",       "https://feeds.bloomberg.com/markets/news.rss"),
+            ("Financial Times", "https://www.ft.com/rss/home"),
+            ("The Economist",   "https://www.economist.com/finance-and-economics/rss.xml"),
+            ("Livemint",        "https://www.livemint.com/rss/news"),
+            ("CNBC",            "https://www.cnbc.com/id/10001147/device/rss/rss.html"),
+        ],
+        "backup": [
+            ("Times of India Business", "https://timesofindia.indiatimes.com/rssfeeds/1898055.cms"),
+            ("NDTV Profit",             "https://feeds.feedburner.com/ndtvprofit-latest"),
+            ("WSJ Markets",             "https://feeds.a.dj.com/rss/RSSMarketsMain.xml"),
+            ("Yahoo Finance",           "https://finance.yahoo.com/rss/"),
+        ],
+    },
+    "STEM": {
+        "primary": [
+            ("MIT Technology Review", "https://www.technologyreview.com/feed/"),
+            ("BBC Science",           "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml"),
+            ("The Verge",             "https://www.theverge.com/rss/index.xml"),
+            ("Ars Technica",          "https://feeds.arstechnica.com/arstechnica/index"),
+        ],
+        "backup": [
+            ("Wired",         "https://www.wired.com/feed/rss"),
+            ("Phys.org",      "https://phys.org/rss-feed/"),
+            ("Science Daily", "https://www.sciencedaily.com/rss/top/technology.xml"),
+            ("Nature",        "https://www.nature.com/nature.rss"),
+        ],
+    },
+    "Current Affairs": {
+        "primary": [
+            ("BBC India",     "https://feeds.bbci.co.uk/news/world/asia/india/rss.xml"),
+            ("BBC World",     "https://feeds.bbci.co.uk/news/world/rss.xml"),
+            ("The Economist", "https://www.economist.com/the-world-this-week/rss.xml"),
+            ("Al Jazeera",    "https://www.aljazeera.com/xml/rss/all.xml"),
+        ],
+        "backup": [
+            ("Times of India", "https://timesofindia.indiatimes.com/rssfeeds/296589292.cms"),
+            ("NDTV India",     "https://feeds.feedburner.com/ndtvnews-india-news"),
+            ("Indian Express", "https://indianexpress.com/feed/"),
+            ("Scroll.in",      "https://scroll.in/feed"),
+        ],
+    },
 }
 
 # Priority sources get a credibility bonus in scoring
 _PRIORITY_SOURCES = {
-    "Bloomberg", "Financial Times", "Economic Times",
-    "MIT Technology Review", "Harvard Business Review", "The Economist",
+    "Bloomberg", "Financial Times", "The Economist",
+    "MIT Technology Review", "Livemint", "Ars Technica",
 }
 
 _SCOUT_SYSTEM = _load_prompt("01_news_scout")
@@ -394,22 +451,35 @@ def news_scout(run_date: str) -> list[dict]:
     cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
 
     # --- fetch all RSS feeds (no AI, no cost) --------------------------------
+    # Primary feeds tried first; backups used automatically if < _MIN_STORIES_PER_CATEGORY
     all_stories: list[dict] = []
-    for category, feeds in _RSS_FEEDS.items():
+    for category, tier_feeds in _RSS_FEEDS.items():
         _step(f"Fetching {category}...")
-        cat_count = 0
         seen_titles: set[str] = set()
-        for source, url in feeds:
-            stories = _fetch_rss(url, source, category, cutoff)
-            for s in stories:
-                key = s["title"].lower()[:60]
-                if key not in seen_titles and key not in avoid_titles:
-                    seen_titles.add(key)
-                    all_stories.append(s)
-                    cat_count += 1
-            if stories:
-                _step(f"  ✓ {source}: {len(stories)} fresh stories")
-        _step(f"  → {cat_count} unique stories in {category}")
+        cat_stories: list[dict] = []
+
+        def _collect(feeds_list: list[tuple[str, str]], label: str) -> None:
+            for source, url in feeds_list:
+                stories = _fetch_rss(url, source, category, cutoff)
+                added = 0
+                for s in stories:
+                    key = s["title"].lower()[:60]
+                    if key not in seen_titles and key not in avoid_titles:
+                        seen_titles.add(key)
+                        cat_stories.append(s)
+                        added += 1
+                if stories:
+                    _step(f"  ✓ {source}: {added} fresh stories{label}")
+                else:
+                    _step(f"  ✗ {source}: no stories / failed{label}")
+
+        _collect(tier_feeds["primary"], "")
+        if len(cat_stories) < _MIN_STORIES_PER_CATEGORY:
+            _step(f"  Only {len(cat_stories)} stories — trying backup feeds...")
+            _collect(tier_feeds["backup"], " (backup)")
+
+        all_stories.extend(cat_stories)
+        _step(f"  → {len(cat_stories)} unique stories in {category}")
 
     _ok(f"Total: {len(all_stories)} fresh stories fetched via RSS (0 tokens used)")
 
