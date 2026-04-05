@@ -5,9 +5,9 @@ Skills applied: tintin-type-image, openai-image-generation
 Skill references: ../skills/tintin-type-image.md, ../skills/openai-image-generation.md
 
 MODEL SETTINGS (edit these — no Python needed):
-model: gpt-image-1
+model: dall-e-3
 size: 1024x1024
-quality: medium
+quality: standard
 
 ---
 To change the art style, replace the FIRST LINE above.
