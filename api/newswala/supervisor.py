@@ -23,11 +23,51 @@ from .agents import (
     whatsapp_copywriter,
     memory_cue_designer,
     image_maker,
-    SCOUT_MODEL,
+    SCOUT_MODEL, WRITE_MODEL, FAST_MODEL,
 )
 
 import anthropic
 client = anthropic.Anthropic()
+
+# ---------------------------------------------------------------------------
+# cost tracker — prints estimated spend after each run
+# Prices per 1M tokens (April 2026)
+# ---------------------------------------------------------------------------
+
+_PRICES = {
+    "claude-sonnet-4-6": {"in": 3.00,  "out": 15.00},
+    "claude-haiku-4-5":  {"in": 1.00,  "out":  5.00},
+    "claude-opus-4-6":   {"in": 5.00,  "out": 25.00},
+}
+
+class CostTracker:
+    """Accumulates token usage across all agents and prints a cost summary."""
+    def __init__(self):
+        self.entries: list[dict] = []
+
+    def add(self, agent: str, model: str, in_tokens: int, out_tokens: int):
+        price = _PRICES.get(model, {"in": 3.0, "out": 15.0})
+        cost  = (in_tokens * price["in"] + out_tokens * price["out"]) / 1_000_000
+        self.entries.append({"agent": agent, "model": model,
+                             "in": in_tokens, "out": out_tokens, "cost": cost})
+
+    def total(self) -> float:
+        return sum(e["cost"] for e in self.entries)
+
+    def print_summary(self):
+        print(f"\n  {'─'*54}")
+        print(f"  {'COST BREAKDOWN':}")
+        print(f"  {'─'*54}")
+        print(f"  {'Agent':<24} {'Model':<18} {'In':>6} {'Out':>6}  {'Cost':>8}")
+        print(f"  {'─'*54}")
+        for e in self.entries:
+            m = e["model"].replace("claude-","").replace("-4-6","4.6").replace("-4-5","4.5")
+            print(f"  {e['agent']:<24} {m:<18} {e['in']:>6} {e['out']:>6}  ${e['cost']:>7.4f}")
+        print(f"  {'─'*54}")
+        t = self.total()
+        print(f"  {'TOTAL this run':<48} ${t:>7.4f}")
+        print(f"  {'Est. monthly (30 days)':<48} ${t*30:>7.2f}")
+        print(f"  {'─'*54}\n")
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +219,7 @@ def _fallback_whatsapp(stories: list[dict]) -> dict:
 # newswala — the supervisor that runs the full pipeline
 # ---------------------------------------------------------------------------
 
-def newswala(run_date: str | None = None, verbose: bool = True) -> dict:
+def newswala(run_date: str | None = None, verbose: bool = True) -> dict:  # noqa: C901
     """
     Run the full NewsWala pipeline.
 
@@ -194,9 +234,14 @@ def newswala(run_date: str | None = None, verbose: bool = True) -> dict:
     if run_date is None:
         run_date = date.today().isoformat()
 
+    cost = CostTracker()
+
     print(f"\n{BOLD}🐾  NewsWala  |  {run_date}{RESET}")
     print(f"{DIM}Pipeline: news_scout → family_fit_editor → "
           f"whatsapp_copywriter + memory_cue_designer → image_maker{RESET}")
+    print(f"{DIM}Models:   scout={SCOUT_MODEL.split('-',2)[-1]}  "
+          f"write={WRITE_MODEL.split('-',2)[-1]}  "
+          f"fast={FAST_MODEL.split('-',2)[-1]}{RESET}")
 
     # ------------------------------------------------------------------
     # 1. news_scout — search the live web
@@ -315,5 +360,8 @@ def newswala(run_date: str | None = None, verbose: bool = True) -> dict:
     rendered = _render(package)
     package["_rendered"] = rendered
     print(rendered)
+
+    # print cost summary
+    cost.print_summary()
 
     return package
