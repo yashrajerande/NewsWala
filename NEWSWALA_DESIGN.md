@@ -101,7 +101,7 @@ NewsWala is a **multi-agent pipeline** — six specialised AI agents that work t
 - Looks across Economics, STEM, and India Current Affairs
 - Finds 4–6 candidate stories from credible sources
 - Scores each story on: credibility, novelty, inspiration, educational value, India relevance, child suitability, memorability, and lesson potential
-- Prefers sources like Reuters, BBC, The Hindu, Mint, ISRO, Nature, Financial Times
+- Prefers sources like MIT News, MIT Outreach, India Today Education, Economic Times, Times of India, Bloomberg, Reuters, BBC, The Hindu, Mint, Nature, Financial Times
 
 **Avoids:** Celebrity gossip, crime, graphic content, partisan politics, clickbait
 
