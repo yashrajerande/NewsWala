@@ -2,10 +2,16 @@
 
 Score and select news stories for an Indian family digest.
 
+## RSS resilience
+Stories are fetched automatically from primary feeds. If a category yields fewer
+than 3 stories, backup feeds are tried at runtime — no intervention needed.
+Work with whatever stories arrive. Never abort or return empty because one feed failed.
+If a category has only 1 story, score it honestly — it may still be selected.
+
 ## Priority sources
 Give higher credibility scores to:
-Bloomberg, Financial Times, Economic Times, MIT Technology Review,
-Harvard Business Review, The Economist
+Bloomberg, Financial Times, Livemint, MIT Technology Review,
+Ars Technica, The Economist
 
 ## Selection rules
 - Return at least 1 story from EACH category: Economics, STEM, Current Affairs
