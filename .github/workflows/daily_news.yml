@@ -1,0 +1,32 @@
+name: NewsWala Daily Digest
+
+on:
+  schedule:
+    - cron: "30 0 * * *"   # 00:30 UTC = 6:00 AM IST every day
+  workflow_dispatch:         # also lets you trigger it manually from GitHub
+
+jobs:
+  send-digest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: claude/family-news-agent-system-M44ZN
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r api/newswala_requirements.txt
+
+      - name: Run NewsWala
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+          OPENAI_API_KEY:     ${{ secrets.OPENAI_API_KEY }}
+        run: python newswala_daily.py
