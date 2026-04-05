@@ -203,7 +203,7 @@ def news_scout(run_date: str) -> list[dict]:
 # Cost: ~$0.003-0.005/day (Haiku, ~1.5k in + 600 out)
 # ---------------------------------------------------------------------------
 
-_EDITOR_SYSTEM = f"""You are family_fit_editor for NewsWala.
+_EDITOR_SYSTEM = """You are family_fit_editor for NewsWala.
 
 Pick the BEST 1 story (2 only if two are truly exceptional) from candidates.
 Requirements: age-safe for an 11-year-old, clear lesson, emotionally uplifting,
