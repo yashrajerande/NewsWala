@@ -53,6 +53,12 @@ client = anthropic.Anthropic()
 _HISTORY_FILE = Path(__file__).resolve().parents[2] / "newswala_history.json"
 _HISTORY_DAYS = 14   # remember stories from the last 14 days
 
+# --- monthly spend tracker ---------------------------------------------------
+# Stored at project root: ~/NewsWala/newswala_monthly_spend.json
+# Accumulates real API spend per calendar month so you know exactly what you've spent.
+_MONTHLY_SPEND_FILE = Path(__file__).resolve().parents[2] / "newswala_monthly_spend.json"
+_MONTHLY_BUDGET_USD = 5.00
+
 # --- agent directory — system prompts live here, editable without Python -----
 # Agents live in ErandeNewsCorp/ at the repo root (visible on GitHub as employees)
 # From api/newswala/agents.py → up 2 levels → repo root → ErandeNewsCorp/agents
@@ -245,6 +251,42 @@ def save_history(stories: list[dict], run_date: str):
         _HISTORY_FILE.write_text(json.dumps(history, indent=2, ensure_ascii=False))
     except Exception as e:
         _step(f"Could not save history: {e}")
+
+
+def load_monthly_spend() -> dict:
+    """
+    Load the monthly spend ledger.
+    Returns a dict keyed by YYYY-MM: {"total_usd": float, "runs": int, "last_run": str}
+    """
+    if not _MONTHLY_SPEND_FILE.exists():
+        return {}
+    try:
+        return json.loads(_MONTHLY_SPEND_FILE.read_text())
+    except Exception:
+        return {}
+
+
+def record_monthly_spend(run_cost: float, run_date: str) -> dict:
+    """
+    Add this run's cost to the monthly ledger. Returns the updated month entry:
+    {"total_usd": float, "runs": int, "last_run": str, "budget_usd": float}
+    """
+    month_key = run_date[:7]          # "YYYY-MM"
+    ledger = load_monthly_spend()
+
+    entry = ledger.get(month_key, {"total_usd": 0.0, "runs": 0, "last_run": ""})
+    entry["total_usd"] = round(entry["total_usd"] + run_cost, 6)
+    entry["runs"]      = entry["runs"] + 1
+    entry["last_run"]  = run_date
+    entry["budget_usd"] = _MONTHLY_BUDGET_USD
+
+    ledger[month_key] = entry
+    try:
+        _MONTHLY_SPEND_FILE.write_text(json.dumps(ledger, indent=2, ensure_ascii=False))
+    except Exception as e:
+        _step(f"Could not save monthly spend: {e}")
+
+    return entry
 
 
 # ---------------------------------------------------------------------------

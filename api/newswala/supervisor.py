@@ -26,6 +26,7 @@ from .agents import (
     image_generator,
     cost_tracker,                       # shared singleton — all agents write to this
     save_history,
+    record_monthly_spend,
     SCOUT_MODEL, WRITE_MODEL, FAST_MODEL,
 )
 
@@ -316,6 +317,16 @@ def newswala(run_date: str | None = None, verbose: bool = True) -> dict:  # noqa
         _step(f"Could not save history: {e}")
 
     # ------------------------------------------------------------------
+    # record monthly spend — accumulates real cost per calendar month
+    # ------------------------------------------------------------------
+    run_cost = cost_tracker.total()
+    try:
+        monthly = record_monthly_spend(run_cost, run_date)
+    except Exception as e:
+        _step(f"Could not record monthly spend: {e}")
+        monthly = {"total_usd": run_cost, "runs": 1, "budget_usd": 5.0}
+
+    # ------------------------------------------------------------------
     # assemble final package
     # ------------------------------------------------------------------
     package = {
@@ -341,7 +352,8 @@ def newswala(run_date: str | None = None, verbose: bool = True) -> dict:  # noqa
             "generated_image_url":   generated.get("url", ""),   # "" if DALL-E skipped
         },
         "quality_checks": {},
-        "run_cost":        cost_tracker.total(),   # passed to Telegram for cost alert
+        "run_cost":        run_cost,      # this run's Claude + image cost
+        "monthly_spend":   monthly,       # accumulated real spend for this calendar month
     }
 
     # HANDOFF → supervisor validates
