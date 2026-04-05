@@ -575,9 +575,9 @@ _IMG_SYSTEM = _load_prompt("05_image_maker")
 
 
 def image_maker(concept: dict, selected_stories: list[dict]) -> dict:
-    """Write the DALL-E 3 prompt in Tintin/Hergé style."""
+    """Write the image prompt using the Tintin type image skill."""
     _bar(f"🖼️   image_maker  |  {FAST_MODEL}", GREEN)
-    _step("Writing DALL-E 3 prompt (Hergé/Tintin ligne claire style)...")
+    _step("Writing prompt (skill: Tintin type image)...")
     print(f"\n  {GREEN}Prompt:{RESET}\n  {'─'*50}\n  ", end="")
 
     text = ""
@@ -635,11 +635,21 @@ def image_generator(image_prompt: str) -> dict:
         _step("OPENAI_API_KEY not set — skipping image generation (sending text prompt instead)")
         return {}
 
-    # Style prefix: first line of system_prompt.txt (the rest is documentation)
-    style_guide = _load_prompt("06_image_generator").split("\n")[0].strip()
+    # Load settings from agents/06_image_generator/system_prompt.txt
+    # First line = style prefix. Lines with "key: value" = model settings.
+    config_text = _load_prompt("06_image_generator")
+    config_lines = config_text.split("\n")
+    style_guide  = config_lines[0].strip()
 
-    _bar("🎨  image_generator  |  DALL-E 3  (~$0.04)", GREEN)
-    _step(f"Style: {style_guide[:80]}...")
+    settings = {"model": "gpt-image-1", "size": "1024x1024", "quality": "medium"}
+    for line in config_lines:
+        for key in settings:
+            if line.strip().lower().startswith(f"{key}:"):
+                settings[key] = line.split(":", 1)[1].strip()
+
+    _bar(f"🎨  image_generator  |  {settings['model']}  ({settings['quality']})", GREEN)
+    _step(f"Skill: Tintin type image")
+    _step(f"Model: {settings['model']}  size: {settings['size']}  quality: {settings['quality']}")
     _step("Generating image...")
 
     try:
@@ -647,20 +657,21 @@ def image_generator(image_prompt: str) -> dict:
         oa_client = openai.OpenAI(api_key=api_key)
 
         full_prompt = style_guide + " " + image_prompt
-        # DALL-E 3 prompt limit: 4000 chars
         if len(full_prompt) > 3900:
             full_prompt = full_prompt[:3900]
 
-        response = oa_client.images.generate(
-            model="dall-e-3",
-            prompt=full_prompt,
-            size="1024x1024",
-            quality="standard",
-            n=1,
-        )
+        # Build kwargs — gpt-image-1 and dall-e-3 share the same API surface
+        gen_kwargs = dict(model=settings["model"], prompt=full_prompt,
+                         size=settings["size"], n=1)
+        if settings["model"] == "dall-e-3":
+            gen_kwargs["quality"] = settings["quality"]  # standard | hd
+        else:
+            gen_kwargs["quality"] = settings["quality"]  # low | medium | high | auto
+
+        response = oa_client.images.generate(**gen_kwargs)
         url = response.data[0].url
         revised = getattr(response.data[0], "revised_prompt", "")
-        _ok(f"Image generated successfully")
+        _ok("Image generated successfully")
         _step(f"URL: {url[:80]}...")
         return {"url": url, "revised_prompt": revised}
 

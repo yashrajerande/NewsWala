@@ -1,17 +1,26 @@
-Hergé Tintin ligne claire style comic illustration: clean bold black outlines, flat bright colours, no gradients, no shading, simple geometric background, square comic panel format.
+classic European clear-line adventure comic, crisp uniform black ink outlines, flat opaque color fills, minimal shading, simplified but expressive faces, clean mid-century comic-book storytelling aesthetic, bright even natural light, polished print-comic finish
 
 ---
-STYLE GUIDE (edit this to change the image style):
+SKILL: Tintin type image
+SOURCE: Franco-Belgian clear-line (ligne claire) comic tradition
 
-Core style: Hergé / Tintin "ligne claire"
-- Clean bold black outlines on every element
-- Flat areas of bright colour — no gradients, no blending, no photorealism
-- Simple geometric backgrounds (solid colour or minimal pattern)
-- Square 1:1 comic panel format
-- Warm, cheerful, family-safe
-- The cocker spaniel is always the visual centre
+MODEL SETTINGS (edit these to change image generation behaviour):
+model: gpt-image-1
+size: 1024x1024
+quality: medium
 
-To change the style, replace the first line above. Examples:
-  "Studio Ghibli watercolour style, soft pastel tones, hand-drawn feel."
-  "Pixar 3D animation style, warm lighting, expressive characters."
-  "Indian miniature painting style, rich jewel tones, ornate borders."
+AVOID: photorealism, painterly texture, heavy shadows, anime styling, 3D rendering, text artifacts, distorted hands, manga conventions, cinematic blur
+
+---
+COST REFERENCE:
+  gpt-image-1  low     1024x1024  ~$0.011/image  ~$0.33/month
+  gpt-image-1  medium  1024x1024  ~$0.042/image  ~$1.26/month  ← default
+  gpt-image-1  high    1024x1024  ~$0.167/image  ~$5.01/month
+  dall-e-3     standard 1024x1024 ~$0.040/image  ~$1.20/month
+
+---
+To change the art style, replace the FIRST LINE above. Examples:
+  Studio Ghibli watercolour style: soft pastel tones, hand-drawn warmth, gentle nature backgrounds.
+  Pixar 3D animation style: rounded shapes, warm cinematic lighting, expressive eyes.
+  Indian miniature painting style: rich jewel tones, ornate gold borders, flat perspective.
+  Vintage 1960s Indian film poster style: bold primary colours, hand-painted look.
