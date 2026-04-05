@@ -1,462 +1,503 @@
 """
-NewsWala — Individual agent implementations.
+NewsWala — agent implementations.
 
-Agents:
-  news_scout          — searches the web for candidate stories
-  family_fit_editor   — scores & filters stories for this family
-  whatsapp_copywriter — writes the WhatsApp-ready message
-  memory_cue_designer — designs the cocker spaniel image concept
-  image_maker         — generates the final image prompt
+Six agents working as a newsroom pipeline:
 
-Each agent is a function that takes a typed input and returns a typed output.
-All agents use Claude Opus 4.6 with adaptive thinking and web search where needed.
+    news_scout → family_fit_editor → whatsapp_copywriter
+                                   → memory_cue_designer → image_maker
+
+Each agent is a plain function: takes input, returns output, prints
+everything it's thinking to the terminal so there are no black boxes.
+
+Speed note: news_scout uses Sonnet (faster web search). The creative
+agents that need taste and judgment use Opus.
 """
 
 import json
+import sys
 import anthropic
 
-from .config import FAMILY, CATEGORIES, PREFERRED_SOURCES, AVOID_TOPICS, MAX_STORIES, MODEL
+from .config import FAMILY, CATEGORIES, PREFERRED_SOURCES, AVOID_TOPICS, MAX_STORIES
 
+# model for search / fast tasks — Sonnet is much quicker here
+SCOUT_MODEL  = "claude-sonnet-4-6"
+# model for creative / editorial tasks — Opus for taste and judgment
+WRITE_MODEL  = "claude-opus-4-6"
 
 client = anthropic.Anthropic()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# terminal helpers — color + streaming
+# ---------------------------------------------------------------------------
+
+BOLD    = "\033[1m"
+DIM     = "\033[2m"
+CYAN    = "\033[96m"
+GREEN   = "\033[92m"
+YELLOW  = "\033[93m"
+BLUE    = "\033[94m"
+MAGENTA = "\033[95m"
+RED     = "\033[91m"
+RESET   = "\033[0m"
+
+def _bar(label: str, color: str = CYAN):
+    """Print a clear agent header bar."""
+    print(f"\n{color}{BOLD}{'━' * 54}{RESET}")
+    print(f"{color}{BOLD}  {label}{RESET}")
+    print(f"{color}{BOLD}{'━' * 54}{RESET}")
+
+def _handoff(from_agent: str, to_agent: str, summary: str):
+    """Print a handoff message between agents."""
+    print(f"\n  {DIM}{'─' * 50}{RESET}")
+    print(f"  {YELLOW}↳ {BOLD}{from_agent}{RESET}{YELLOW} → {BOLD}{to_agent}{RESET}")
+    print(f"  {DIM}  {summary}{RESET}")
+    print(f"  {DIM}{'─' * 50}{RESET}\n")
+
+def _step(msg: str):
+    print(f"  {DIM}▸ {msg}{RESET}", flush=True)
+
+def _ok(msg: str):
+    print(f"\n  {GREEN}✓ {msg}{RESET}", flush=True)
+
+def _stream(chunk: str):
+    sys.stdout.write(chunk)
+    sys.stdout.flush()
+
+
+# ---------------------------------------------------------------------------
+# helper: extract JSON from Claude's response text
+# ---------------------------------------------------------------------------
+
+def _parse_json(text: str, shape: str = "object") -> dict | list:
+    """
+    Pull the first JSON object or array out of `text`.
+    shape = "object" → look for { ... }
+    shape = "array"  → look for [ ... ]
+    Falls back to asking Claude to reformat if parsing fails.
+    """
+    open_c, close_c = ("{", "}") if shape == "object" else ("[", "]")
+    start = text.find(open_c)
+    end   = text.rfind(close_c) + 1
+    if start != -1 and end > start:
+        try:
+            return json.loads(text[start:end])
+        except json.JSONDecodeError:
+            pass
+
+    # fallback: ask Claude to clean it up
+    _step("JSON parse failed — asking Claude to reformat...")
+    resp = client.messages.create(
+        model=SCOUT_MODEL,
+        max_tokens=4000,
+        messages=[{
+            "role": "user",
+            "content": f"Extract the JSON {shape} from this text. Return ONLY valid JSON:\n\n{text[:6000]}",
+        }],
+    )
+    clean = resp.content[0].text
+    s = clean.find(open_c)
+    e = clean.rfind(close_c) + 1
+    if s != -1 and e > s:
+        return json.loads(clean[s:e])
+    return [] if shape == "array" else {}
+
+
+# ---------------------------------------------------------------------------
 # Agent 1 — news_scout
-# ─────────────────────────────────────────────────────────────────────────────
+# searches the live web for today's best stories
+# ---------------------------------------------------------------------------
 
-NEWS_SCOUT_SYSTEM = f"""You are news_scout, an elite news researcher for a curated family digest called NewsWala.
+_SCOUT_SYSTEM = f"""You are news_scout. Search the web for today's most interesting,
+inspiring news from Economics, STEM, and India-relevant Current Affairs.
 
-Your job: search the web RIGHT NOW for today's most interesting, inspiring, high-signal news stories.
+Family: daughters Manishka (18) and Divyana (11), parents Yash & Pooja, India-based.
 
-FAMILY CONTEXT:
-- Two daughters: Manishka (turning 18, 24 October) and Divyana (turning 11, 12 July)
-- Parents: Yash and Pooja
-- Based in India
+Preferred sources: {', '.join(PREFERRED_SOURCES[:8])}
+Avoid: {', '.join(AVOID_TOPICS[:5])}
 
-TARGET CATEGORIES (pick the best stories across all three):
-{json.dumps(CATEGORIES, indent=2)}
+Score each story on: credibility, novelty, inspiration, educational_value,
+india_relevance, child_suitability, memorability, lesson_potential (each 1-10, total /80).
 
-PREFERRED SOURCE QUALITY:
-{json.dumps(PREFERRED_SOURCES, indent=2)}
-
-AVOID:
-{json.dumps(AVOID_TOPICS, indent=2)}
-
-SELECTION CRITERIA — score each story on:
-1. Credibility (is the source reliable?)
-2. Novelty (is this genuinely new / surprising?)
-3. Inspiration (does it spark wonder or ambition?)
-4. Educational value (does it teach something real?)
-5. India relevance (direct impact on or from India, or global context India students should know)
-6. Emotional suitability for children (safe, uplifting, not disturbing)
-7. Memorability (dinner-table conversation worthy)
-8. Lesson potential (is there a clear moral or takeaway?)
-
-OUTPUT: Return a JSON array of 4-6 candidate stories. Each story object MUST include:
+Return ONLY a JSON array of 4-6 stories. Each story:
 {{
-  "title": "string",
-  "category": "Economics | STEM | Current Affairs",
-  "source": "string",
-  "url": "string",
-  "summary": "2-3 sentence plain-English summary",
-  "why_interesting": "1 sentence on why this is worth sharing",
-  "india_relevance": "1 sentence — direct or indirect",
-  "scores": {{
-    "credibility": 1-10,
-    "novelty": 1-10,
-    "inspiration": 1-10,
-    "educational_value": 1-10,
-    "india_relevance": 1-10,
-    "child_suitability": 1-10,
-    "memorability": 1-10,
-    "lesson_potential": 1-10,
-    "total": 1-80
-  }},
-  "lesson_or_moral": "one crisp sentence capturing the lesson"
-}}
-
-Search across Economics, STEM, and India/Global Current Affairs. Return ONLY valid JSON.
-"""
+  "title": str, "category": "Economics|STEM|Current Affairs",
+  "source": str, "url": str,
+  "summary": "2-3 sentences",
+  "why_interesting": str, "india_relevance": str,
+  "scores": {{"credibility":N,"novelty":N,"inspiration":N,"educational_value":N,
+              "india_relevance":N,"child_suitability":N,"memorability":N,
+              "lesson_potential":N,"total":N}},
+  "lesson_or_moral": str
+}}"""
 
 
 def news_scout(run_date: str) -> list[dict]:
-    """Search the web for candidate news stories and return scored candidates."""
-    print("  [news_scout] Searching the web for today's best stories...")
+    """
+    Scan the live web for candidate stories.
+    Uses Sonnet + web_search for speed. Streams search queries live.
+    Returns list of scored candidate dicts.
+    """
+    _bar(f"🔍  news_scout  |  {run_date}", CYAN)
+    _step(f"Using {SCOUT_MODEL} with live web search")
+    _step("Searching Economics, STEM, and India Current Affairs...")
 
-    # web_search_20260209 is a server-side tool — Anthropic runs the search
-    # automatically. No manual tool-use loop needed. Just stream and get
-    # the final message. Handle pause_turn by re-sending to continue.
-    tools = [
-        {"type": "web_search_20260209", "name": "web_search"},
-    ]
+    messages = [{
+        "role": "user",
+        "content": (
+            f"Today is {run_date}. Search the web for the most interesting inspiring news "
+            f"from Economics, STEM, and India current affairs in the last 24-48 hours. "
+            f"Search at least 3 different queries across the categories. "
+            f"Use credible sources. Return a JSON array of 4-6 scored candidate stories."
+        ),
+    }]
 
-    messages = [
-        {
-            "role": "user",
-            "content": (
-                f"Today is {run_date}. Search the web for the most interesting, "
-                f"inspiring news stories from Economics, STEM, and India-relevant current affairs "
-                f"published in the last 24-48 hours. Search multiple times across different topics. "
-                f"Find stories from credible sources like BBC, Reuters, The Hindu, Mint, ISRO, Nature. "
-                f"Return your findings as a JSON array of 4-6 candidate stories with all required fields."
-            ),
-        }
-    ]
+    tools  = [{"type": "web_search_20260209", "name": "web_search"}]
+    text   = ""
+    n_searches = 0
 
-    max_continuations = 5
-    for _ in range(max_continuations):
+    for attempt in range(4):  # max 4 server-side passes
         with client.messages.stream(
-            model=MODEL,
-            max_tokens=8000,
-            system=NEWS_SCOUT_SYSTEM,
+            model=SCOUT_MODEL,
+            max_tokens=6000,
+            system=_SCOUT_SYSTEM,
             tools=tools,
             messages=messages,
         ) as stream:
+            for event in stream:
+                # show each web search query as it fires
+                if (event.type == "content_block_start"
+                        and hasattr(event, "content_block")
+                        and getattr(event.content_block, "type", "") == "server_tool_use"):
+                    q = getattr(event.content_block, "input", {})
+                    query_str = q.get("query", str(q)) if isinstance(q, dict) else str(q)
+                    n_searches += 1
+                    _step(f"🌐  search #{n_searches}: \"{query_str}\"")
+
+                # stream Claude's commentary (not the JSON blob)
+                elif (event.type == "content_block_delta"
+                      and hasattr(event, "delta")
+                      and getattr(event.delta, "type", "") == "text_delta"):
+                    chunk = event.delta.text
+                    text += chunk
+                    if not text.lstrip().startswith("["):
+                        _stream(chunk)
+
             response = stream.get_final_message()
+
+        # collect any text blocks we might have missed
+        for block in response.content:
+            if hasattr(block, "text") and block.text not in text:
+                text += block.text
 
         if response.stop_reason == "end_turn":
             break
-
         if response.stop_reason == "pause_turn":
-            # Server-side tool hit its iteration limit — append and continue
+            # server hit its loop limit — append and ask it to continue
             messages.append({"role": "assistant", "content": response.content})
+            _step("Server paused — continuing...")
             continue
+        break  # any other stop reason → done
 
-        # Any other stop reason — break and use what we have
-        break
+    print()
+    candidates = _parse_json(text, shape="array")
+    _ok(f"Found {len(candidates)} candidate stories:")
+    for i, s in enumerate(candidates, 1):
+        score = s.get("scores", {}).get("total", "?")
+        print(f"    {DIM}[{i}] {s.get('title','?')}  ({s.get('category','')})  {score}/80{RESET}")
 
-    # Extract JSON from the response
-    text = ""
-    for block in response.content:
-        if hasattr(block, "text"):
-            text += block.text
-
-    # Parse JSON — find the array
-    try:
-        start = text.find("[")
-        end = text.rfind("]") + 1
-        if start != -1 and end > start:
-            candidates = json.loads(text[start:end])
-        else:
-            candidates = json.loads(text)
-    except json.JSONDecodeError:
-        # Fallback: ask Claude to re-format
-        print("  [news_scout] JSON parse failed, retrying clean extraction...")
-        candidates = _extract_json_retry(text)
-
-    print(f"  [news_scout] Found {len(candidates)} candidate stories.")
     return candidates
 
 
-def _extract_json_retry(raw_text: str) -> list[dict]:
-    """Ask Claude to extract clean JSON from messy text."""
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=4000,
-        messages=[{
-            "role": "user",
-            "content": (
-                f"Extract the JSON array of news stories from this text and return ONLY valid JSON:\n\n{raw_text[:6000]}"
-            ),
-        }],
-    )
-    text = response.content[0].text
-    start = text.find("[")
-    end = text.rfind("]") + 1
-    if start != -1 and end > start:
-        return json.loads(text[start:end])
-    return []
-
-
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
 # Agent 2 — family_fit_editor
-# ─────────────────────────────────────────────────────────────────────────────
+# picks the best 1 (or at most 2) stories for this family
+# ---------------------------------------------------------------------------
 
-FAMILY_FIT_SYSTEM = f"""You are family_fit_editor for NewsWala — a curated daily family digest.
+_EDITOR_SYSTEM = f"""You are family_fit_editor for NewsWala.
 
-FAMILY:
-- Daughters: Manishka (turning 18) and Divyana (turning 11)
-- Parents: Yash and Pooja, India-based
-- The message must work for BOTH daughters simultaneously
+Pick the BEST 1 story (or 2 if two are exceptional) from the candidates.
+Every selected story must be age-safe for an 11-year-old, have a clear lesson,
+and spark curiosity in both daughters at once.
 
-YOUR JOB:
-Evaluate the candidate stories and select the BEST 1 story, or at most 2 if there are two genuinely exceptional ones.
+Reject: graphic violence, partisan politics, adult themes, trivial content.
+If picking 2, choose stories from different categories.
 
-SELECTION RULES:
-- Max {MAX_STORIES} stories
-- Every selected story MUST be age-appropriate for an 11-year-old
-- The story must have a clear lesson or moral that can be expressed in one sentence
-- The story must be emotionally safe: no fear, no graphic content, no divisive politics
-- Prefer stories that make both girls say "wow, I didn't know that"
-- If two stories are selected, they should be from different categories
-
-REJECTION CRITERIA (disqualify immediately):
-- Graphic violence or crime
-- Partisan political framing
-- Adult/disturbing themes
-- Purely negative market news with no educational angle
-- Trivial celebrity content
-- No clear lesson or takeaway
-
-For each selected story, add:
-- "why_selected": why this beat others
-- "family_fit_notes": specific notes on how it works for this family
-- "lesson_or_moral": one crisp, memorable sentence (the moral of the story)
-
-Return ONLY a JSON array of selected stories (1 or 2 max), each with all original fields plus the three new ones.
-"""
+Think out loud before deciding. Then return ONLY a JSON array of selected stories,
+each with the original fields plus:
+  "why_selected": str   — why this beat the others
+  "family_fit_notes": str — how it works specifically for this family
+  "lesson_or_moral": str  — one crisp, memorable sentence"""
 
 
 def family_fit_editor(candidates: list[dict]) -> list[dict]:
-    """Score and filter stories for family appropriateness. Returns 1-2 selected stories."""
-    print(f"  [family_fit_editor] Evaluating {len(candidates)} candidates...")
+    """
+    Filter candidates to the best 1-2 stories for Manishka & Divyana.
+    Streams the reasoning so you can see the editorial judgment live.
+    """
+    _bar(f"🧐  family_fit_editor  |  {len(candidates)} candidates", MAGENTA)
+    _step(f"Using {WRITE_MODEL} with adaptive thinking")
+    _step("Reading all candidates and judging family fit...")
+    print(f"\n  {MAGENTA}Reasoning:{RESET}")
+    print(f"  {'─'*50}")
+    print("  ", end="")
 
-    response = client.messages.create(
-        model=MODEL,
+    text = ""
+
+    with client.messages.stream(
+        model=WRITE_MODEL,
         max_tokens=4000,
         thinking={"type": "adaptive"},
-        system=FAMILY_FIT_SYSTEM,
+        system=_EDITOR_SYSTEM,
         messages=[{
             "role": "user",
             "content": (
-                f"Here are the candidate stories. Select the best 1 (or at most 2 exceptional ones):\n\n"
-                f"{json.dumps(candidates, indent=2)}"
+                f"Candidates:\n{json.dumps(candidates, indent=2)}\n\n"
+                f"Think through each story, then pick the best 1 (or at most 2)."
             ),
         }],
-    )
+    ) as stream:
+        for event in stream:
+            if event.type == "content_block_delta" and hasattr(event, "delta"):
+                dt = getattr(event.delta, "type", "")
+                if dt == "thinking_delta":
+                    _stream(f"{DIM}{event.delta.thinking}{RESET}")
+                elif dt == "text_delta":
+                    text += event.delta.text
+                    if not text.lstrip().startswith("["):
+                        _stream(event.delta.text)
+        response = stream.get_final_message()
 
-    text = ""
-    for block in response.content:
-        if hasattr(block, "text"):
-            text += block.text
+    for b in response.content:
+        if hasattr(b, "text") and b.text not in text:
+            text += b.text
 
-    try:
-        start = text.find("[")
-        end = text.rfind("]") + 1
-        selected = json.loads(text[start:end]) if start != -1 else []
-    except json.JSONDecodeError:
-        selected = _extract_json_retry(text)
-
-    # Safety cap
+    print("\n")
+    selected = _parse_json(text, shape="array")
     selected = selected[:MAX_STORIES]
-    print(f"  [family_fit_editor] Selected {len(selected)} story/stories.")
+
+    _ok(f"Selected {len(selected)} story/stories:")
+    for s in selected:
+        print(f"    {GREEN}→ {s.get('title','?')}{RESET}")
+        print(f"    {DIM}  {s.get('why_selected','')}{RESET}")
+
     return selected
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
 # Agent 3 — whatsapp_copywriter
-# ─────────────────────────────────────────────────────────────────────────────
+# turns the selected story into a family message
+# ---------------------------------------------------------------------------
 
-COPYWRITER_SYSTEM = f"""You are whatsapp_copywriter for NewsWala.
+_COPY_SYSTEM = """You are whatsapp_copywriter for NewsWala.
 
-You write beautiful, short, memorable WhatsApp messages for Yash and Pooja to send to their daughters.
+Write a short, warm, intelligent WhatsApp message from Yash and Pooja to their
+daughters Manishka (18) and Divyana (11).
 
-FAMILY:
-- Daughters: Manishka (turning 18) and Divyana (turning 11)
-- The message comes from BOTH PARENTS: Yash and Pooja
-- Sign-off: "Love, Mama & Papa"
+Voice: thoughtful modern Indian family. Under 250 words. No preaching.
+No babyish tone. No motivational clichés. Max 1-2 emojis. Factually accurate.
 
-VOICE & STYLE:
-- Warm but intelligent — thoughtful modern Indian family
-- Short: under 250 words total for the main message
-- No babyish tone, no cringe, no preachy moralising
-- No excessive emojis (1-2 max, only if they add meaning)
-- No fake facts or exaggeration
-- No motivational-poster clichés
-- Naturally bilingual register is fine (occasional Hindi word is okay if it flows)
-- Factually accurate — do not embellish the story
-
-STRUCTURE:
-1. A catchy opening line (makes them want to read on)
-2. The core story in 2-4 simple sentences (accurate, clear for an 11-year-old)
-3. Why it matters / what's cool about it
-4. ONE memorable standalone lesson sentence (this should be poetic enough to remember)
-5. An optional short thought-prompt question (makes them think)
+Structure:
+1. Catchy opening
+2. Core story in 2-4 plain sentences
+3. Why it's cool
+4. ONE memorable lesson sentence
+5. Optional thought-prompt question
 6. Sign-off: "Love, Mama & Papa"
 
-OUTPUT: Return a JSON object with exactly these fields:
-{{
-  "main_message": "the full WhatsApp message text (including sign-off)",
-  "lesson_line": "the standalone lesson/moral sentence (repeated from inside the message)",
-  "shorter_variant": "a very short 3-4 line version of the same message for quick sharing",
-  "optional_thought_prompt": "one optional question to spark family conversation",
+Return ONLY valid JSON — no markdown, no preamble:
+{
+  "main_message": str,
+  "lesson_line": str,
+  "shorter_variant": str,
+  "optional_thought_prompt": str,
   "signoff": "Love, Mama & Papa"
-}}
-
-Return ONLY valid JSON. No markdown, no preamble.
-"""
+}"""
 
 
 def whatsapp_copywriter(selected_stories: list[dict]) -> dict:
-    """Write the WhatsApp-ready family message."""
-    print("  [whatsapp_copywriter] Writing the family message...")
-
-    stories_text = json.dumps(selected_stories, indent=2)
-
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=3000,
-        thinking={"type": "adaptive"},
-        system=COPYWRITER_SYSTEM,
-        messages=[{
-            "role": "user",
-            "content": (
-                f"Write a beautiful, short WhatsApp message for Manishka and Divyana based on "
-                f"these selected stories. The message must feel like it comes from both Yash and Pooja.\n\n"
-                f"Stories:\n{stories_text}"
-            ),
-        }],
-    )
+    """
+    Write the WhatsApp-ready family message. Streams the draft live
+    so you can watch it being written.
+    """
+    _bar("✍️   whatsapp_copywriter", BLUE)
+    _step(f"Using {WRITE_MODEL} with adaptive thinking")
+    _step("Drafting message for Manishka & Divyana from Yash & Pooja...")
+    print(f"\n  {BLUE}Draft:{RESET}")
+    print(f"  {'─'*50}")
+    print("  ", end="")
 
     text = ""
-    for block in response.content:
-        if hasattr(block, "text"):
-            text += block.text
 
-    try:
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        result = json.loads(text[start:end]) if start != -1 else {}
-    except json.JSONDecodeError:
-        result = {"main_message": text.strip(), "lesson_line": "", "shorter_variant": "", "optional_thought_prompt": "", "signoff": "Love, Mama & Papa"}
+    with client.messages.stream(
+        model=WRITE_MODEL,
+        max_tokens=3000,
+        thinking={"type": "adaptive"},
+        system=_COPY_SYSTEM,
+        messages=[{
+            "role": "user",
+            "content": f"Stories:\n{json.dumps(selected_stories, indent=2)}",
+        }],
+    ) as stream:
+        for event in stream:
+            if event.type == "content_block_delta" and hasattr(event, "delta"):
+                dt = getattr(event.delta, "type", "")
+                if dt == "thinking_delta":
+                    _stream(f"{DIM}{event.delta.thinking}{RESET}")
+                elif dt == "text_delta":
+                    text += event.delta.text
+                    if not text.lstrip().startswith("{"):
+                        _stream(event.delta.text)
+        response = stream.get_final_message()
 
-    print("  [whatsapp_copywriter] Message written.")
+    for b in response.content:
+        if hasattr(b, "text") and b.text not in text:
+            text += b.text
+
+    print("\n")
+    result = _parse_json(text, shape="object")
+
+    if not result:
+        result = {"main_message": text.strip(), "lesson_line": "",
+                  "shorter_variant": "", "optional_thought_prompt": "",
+                  "signoff": "Love, Mama & Papa"}
+
+    _ok("Message drafted. Preview:")
+    for line in result.get("main_message", "")[:220].split("\n"):
+        print(f"    {DIM}{line}{RESET}")
+    print(f"    {DIM}...{RESET}")
+
     return result
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
 # Agent 4 — memory_cue_designer
-# ─────────────────────────────────────────────────────────────────────────────
+# creates the cocker spaniel image concept
+# ---------------------------------------------------------------------------
 
-MEMORY_CUE_SYSTEM = f"""You are memory_cue_designer for NewsWala.
+_CUE_SYSTEM = """You are memory_cue_designer for NewsWala.
 
-Your job: design a charming, memorable image concept that visually encodes the news story for the daughters.
+Design a charming image concept that uses the family's cocker spaniel as a
+visual memory hook for the news story.
 
-RULES:
-- ALWAYS include a cocker spaniel (the family's pet)
-- The cocker spaniel MUST be doing something directly connected to the story
-- The dog is ALWAYS a cocker spaniel — never any other breed
-- The scene should be charming, warm, slightly whimsical — not hyper-realistic
-- The image should work as a memory hook: see the image → remember the story
-- Keep the composition simple — 1-3 elements max
-- Bright, family-friendly colour palette
-- Square composition (WhatsApp-friendly)
+Rules:
+- ALWAYS cocker spaniel, always doing something tied to the story
+- Warm, whimsical, not hyper-realistic
+- Simple composition (1-3 elements)
+- Square format
 
-EXAMPLES OF GOOD CONCEPTS:
-- Space story: "A fluffy cocker spaniel in a tiny astronaut helmet, paw raised, gazing at a rocket launch against a golden sky"
-- Economics/markets: "A cocker spaniel sitting on a tall stool, carefully arranging golden coins into a rising bar graph on a wooden table"
-- Indian science breakthrough: "A cocker spaniel in a tiny lab coat, looking delighted at a glowing blue holographic device labelled 'Made in India'"
-- Climate/nature: "A cocker spaniel planting a small sapling in a sunlit garden, surrounded by colourful butterflies"
-
-OUTPUT: Return a JSON object:
-{{
-  "concept": "1-2 sentence description of the scene and what memory it reinforces",
-  "visual_elements": ["element1", "element2", "element3"],
-  "colour_mood": "warm golden | cool blue | vibrant | soft pastel | etc.",
-  "memory_hook": "why this image will make them remember the story"
-}}
-
-Return ONLY valid JSON.
-"""
+Return ONLY valid JSON:
+{
+  "concept": str,
+  "visual_elements": [str, ...],
+  "colour_mood": str,
+  "memory_hook": str
+}"""
 
 
 def memory_cue_designer(selected_stories: list[dict]) -> dict:
-    """Design the cocker spaniel image concept."""
-    print("  [memory_cue_designer] Designing image concept...")
-
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=1500,
-        thinking={"type": "adaptive"},
-        system=MEMORY_CUE_SYSTEM,
-        messages=[{
-            "role": "user",
-            "content": (
-                f"Design a cocker spaniel image concept that helps Manishka and Divyana remember this news:\n\n"
-                f"{json.dumps(selected_stories, indent=2)}"
-            ),
-        }],
-    )
+    """
+    Design the cocker spaniel image concept. Streams the output live.
+    """
+    _bar("🎨  memory_cue_designer", YELLOW)
+    _step(f"Using {SCOUT_MODEL}")
+    _step("Designing cocker spaniel visual memory cue...")
+    print(f"\n  {YELLOW}Concept:{RESET}")
+    print(f"  {'─'*50}")
+    print("  ", end="")
 
     text = ""
-    for block in response.content:
-        if hasattr(block, "text"):
-            text += block.text
 
-    try:
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        result = json.loads(text[start:end]) if start != -1 else {}
-    except json.JSONDecodeError:
-        result = {"concept": text.strip(), "visual_elements": [], "colour_mood": "warm", "memory_hook": ""}
+    with client.messages.stream(
+        model=SCOUT_MODEL,
+        max_tokens=1000,
+        system=_CUE_SYSTEM,
+        messages=[{
+            "role": "user",
+            "content": f"Design a cocker spaniel image concept for:\n{json.dumps(selected_stories, indent=2)}",
+        }],
+    ) as stream:
+        for event in stream:
+            if (event.type == "content_block_delta"
+                    and hasattr(event, "delta")
+                    and getattr(event.delta, "type", "") == "text_delta"):
+                text += event.delta.text
+                if not text.lstrip().startswith("{"):
+                    _stream(event.delta.text)
+        response = stream.get_final_message()
 
-    print("  [memory_cue_designer] Concept designed.")
+    for b in response.content:
+        if hasattr(b, "text") and b.text not in text:
+            text += b.text
+
+    print("\n")
+    result = _parse_json(text, shape="object")
+    _ok(f"Concept: {result.get('concept','')[:90]}...")
     return result
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
 # Agent 5 — image_maker
-# ─────────────────────────────────────────────────────────────────────────────
+# turns the concept into a DALL-E / Midjourney prompt
+# ---------------------------------------------------------------------------
 
-IMAGE_MAKER_SYSTEM = """You are image_maker for NewsWala.
+_IMG_SYSTEM = """You are image_maker for NewsWala.
 
-Your job: turn an image concept into a production-quality image generation prompt.
+Turn an image concept into a production-ready prompt for DALL-E 3 / Midjourney.
 
-TARGET: The prompt should work beautifully with DALL-E 3, Midjourney, or Stable Diffusion.
+Requirements: square 1:1, cocker spaniel as visual centre, warm digital
+illustration style, bright family-friendly palette, clean composition.
 
-REQUIREMENTS:
-- Square aspect ratio (1:1)
-- The cocker spaniel MUST be the visual centre
-- Bright, premium, family-friendly look
-- Warm, optimistic mood
-- Digital illustration style (not hyper-realistic photography)
-- Clean composition — not cluttered
-- WhatsApp-friendly: works at small size (legible key elements)
+Prompt structure: Subject + Action + Setting + Style + Mood + Lighting + Colours
 
-PROMPT STRUCTURE: Subject + Action + Setting + Style + Mood + Lighting + Colour palette
-
-OUTPUT: Return a JSON object:
+Return ONLY valid JSON:
 {
-  "image_prompt": "the complete image generation prompt (under 200 words)",
-  "negative_prompt": "things to avoid: realistic, dark, scary, cluttered, text, watermark",
-  "style_tags": ["digital illustration", "warm lighting", "cocker spaniel", "family-friendly"],
-  "alt_text": "a short alt-text description of the image for accessibility"
-}
-
-Return ONLY valid JSON.
-"""
+  "image_prompt": str,
+  "negative_prompt": str,
+  "style_tags": [str, ...],
+  "alt_text": str
+}"""
 
 
 def image_maker(concept: dict, selected_stories: list[dict]) -> dict:
-    """Generate the final image prompt from the concept."""
-    print("  [image_maker] Generating image prompt...")
+    """
+    Write the final image generation prompt. Streams the output live.
+    """
+    _bar("🖼️   image_maker", GREEN)
+    _step(f"Using {SCOUT_MODEL}")
+    _step("Writing DALL-E / Midjourney prompt...")
+    print(f"\n  {GREEN}Prompt:{RESET}")
+    print(f"  {'─'*50}")
+    print("  ", end="")
 
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=1500,
-        system=IMAGE_MAKER_SYSTEM,
+    text = ""
+
+    with client.messages.stream(
+        model=SCOUT_MODEL,
+        max_tokens=1000,
+        system=_IMG_SYSTEM,
         messages=[{
             "role": "user",
             "content": (
-                f"Create a production-ready image generation prompt from this concept:\n\n"
-                f"Concept: {json.dumps(concept, indent=2)}\n\n"
-                f"News context: {json.dumps([s.get('title', '') for s in selected_stories])}"
+                f"Concept:\n{json.dumps(concept, indent=2)}\n\n"
+                f"Stories: {[s.get('title','') for s in selected_stories]}"
             ),
         }],
-    )
+    ) as stream:
+        for event in stream:
+            if (event.type == "content_block_delta"
+                    and hasattr(event, "delta")
+                    and getattr(event.delta, "type", "") == "text_delta"):
+                text += event.delta.text
+                if not text.lstrip().startswith("{"):
+                    _stream(event.delta.text)
+        response = stream.get_final_message()
 
-    text = ""
-    for block in response.content:
-        if hasattr(block, "text"):
-            text += block.text
+    for b in response.content:
+        if hasattr(b, "text") and b.text not in text:
+            text += b.text
 
-    try:
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        result = json.loads(text[start:end]) if start != -1 else {}
-    except json.JSONDecodeError:
-        result = {"image_prompt": text.strip(), "negative_prompt": "", "style_tags": [], "alt_text": ""}
-
-    print("  [image_maker] Image prompt ready.")
+    print("\n")
+    result = _parse_json(text, shape="object")
+    _ok("Image prompt ready.")
     return result
