@@ -1,295 +1,363 @@
-# NewsWala — Product Design Document
+# NewsWala — How This Project Works
 
-**Version:** 1.0  
-**Date:** April 2026  
-**Owner:** Yash & Pooja  
-
----
-
-## 1. What Is NewsWala?
-
-NewsWala is a personal AI-powered daily news digest system built for a family.
-
-Every morning it automatically:
-- Scans the internet for the best news from Economics, Science & Technology, and India Current Affairs
-- Filters and rewrites the news in language suitable for children aged 11 and 18
-- Composes a short, warm WhatsApp-ready message from both parents
-- Creates an image prompt featuring the family's cocker spaniel as a memory cue
-- Delivers everything to Telegram so it's ready to copy-paste into WhatsApp
+**Version:** 2.0  
+**Updated:** April 2026  
+**Owners:** Yash & Pooja  
+**Repo:** github.com/yashrajerande/NewsWala
 
 ---
 
-## 2. Family Context
+## What Is NewsWala?
+
+NewsWala is an automated daily news digest for a family.
+
+Every morning at **6 AM IST**, it:
+1. Scans the internet for today's best news across Economics, STEM, and Current Affairs
+2. Picks the most educational, age-safe story for Manishka (18) and Divyana (11)
+3. Writes a short, warm WhatsApp message in the voice of both parents
+4. Generates a Hergé/Tintin-style illustration featuring the family dog as a memory cue
+5. Sends everything directly to Telegram — ready to copy-paste to WhatsApp in under 60 seconds
+
+No laptop needs to be on. No manual input. It just happens.
+
+---
+
+## The Family
 
 | Person | Role | Notes |
 |---|---|---|
-| Yash | Parent / Owner | Co-author of all messages |
-| Pooja | Parent | Co-author of all messages |
-| Manishka | Elder daughter | Turning 18 on 24 October — can handle nuance and complexity |
-| Divyana | Younger daughter | Turning 11 on 12 July — needs warmth, clarity, simplicity |
-| Caramel | Cocker Spaniel Family pet | Always appears in the daily image as a memory cue |
+| Yash | Parent / Owner | Co-author of every message |
+| Pooja | Parent | Co-author of every message |
+| Manishka | Elder daughter | Turning 18 on 24 October — handles nuance and adult context |
+| Divyana | Younger daughter | Turning 11 on 12 July — needs warmth, simplicity, wonder |
+| Caramel | Cocker Spaniel | Always appears in the daily image as the family's memory cue |
 
 **Sign-off on every message:** *Love, Mama & Papa*
 
 ---
 
-## 3. What Problem Does It Solve?
+## How It Runs
 
-Yash and Pooja want to share interesting, educational news with their daughters every day on WhatsApp. But:
+NewsWala is scheduled on **GitHub Actions** — a free cloud service built into GitHub.
 
-- Finding good stories takes time
-- Rewriting them for children takes skill
-- Doing it consistently every single day is hard
-- The message needs to feel personal, not copy-pasted from a news site
+Every morning:
+```
+6:00 AM IST
+    │
+    ▼
+GitHub's cloud server wakes up
+    │
+    ▼
+Downloads the NewsWala code
+    │
+    ▼
+Runs the 6-agent pipeline (~3 minutes)
+    │
+    ▼
+Sends the digest to Telegram
+    │
+    ▼
+Server shuts down
+```
 
-NewsWala automates all of this while keeping the human, family feel.
+Your devices don't need to be on. It runs even when you're travelling.
+
+**Cost of running:** Free. GitHub gives 2,000 free compute minutes per month. NewsWala uses ~90 minutes per month.
+
+**The schedule is defined in** `.github/workflows/daily_news.yml`:
+```yaml
+on:
+  schedule:
+    - cron: "30 0 * * *"   # 00:30 UTC = 6:00 AM IST
+  workflow_dispatch:         # also allows manual trigger from GitHub
+```
+
+The five numbers in `cron` mean: `minute hour day month weekday`. So `30 0 * * *` means "at minute 30 of hour 0, every day." To change the time, change these numbers.
 
 ---
 
-## 4. System Architecture
+## The Six Agents
 
-NewsWala is a **multi-agent pipeline** — six specialised AI agents that work together like a small newsroom team.
+NewsWala works like a small newsroom. Each agent is a specialist with a fixed job. They pass their work to the next agent in sequence.
 
 ```
-                        ┌─────────────┐
-                        │  newswala   │
-                        │ (Supervisor)│
-                        └──────┬──────┘
-                               │ orchestrates
-           ┌───────────────────┼───────────────────┐
-           │                   │                   │
-    ┌──────▼──────┐    ┌───────▼──────┐   ┌───────▼────────┐
-    │ news_scout  │    │family_fit_   │   │  whatsapp_     │
-    │             │    │editor        │   │  copywriter    │
-    │ Searches    │    │              │   │                │
-    │ the web for │───▶│ Scores &     │──▶│ Writes the     │
-    │ 4-6 stories │    │ filters to   │   │ WhatsApp       │
-    │             │    │ best 1-2     │   │ message        │
-    └─────────────┘    └──────────────┘   └───────┬────────┘
-                                                  │
-                                    ┌─────────────▼──────────┐
-                                    │  memory_cue_designer   │
-                                    │                        │
-                                    │  Designs the cocker    │
-                                    │  spaniel image concept │
-                                    └─────────────┬──────────┘
-                                                  │
-                                    ┌─────────────▼──────────┐
-                                    │      image_maker       │
-                                    │                        │
-                                    │  Writes the final      │
-                                    │  image generation      │
-                                    │  prompt                │
-                                    └─────────────┬──────────┘
-                                                  │
-                                    ┌─────────────▼──────────┐
-                                    │   Telegram Delivery    │
-                                    │                        │
-                                    │  Sends to Yash &       │
-                                    │  Pooja's phone         │
-                                    └────────────────────────┘
+GitHub Actions triggers run
+         │
+         ▼
+┌─────────────────┐
+│   newswala      │  Supervisor — runs the pipeline, validates output
+│   supervisor    │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  01_news_scout  │  Searches the web. Returns 4-6 scored stories.
+└────────┬────────┘
+         │  4-6 candidate stories
+         ▼
+┌─────────────────┐
+│  02_family_fit  │  Picks the best 1-2 stories for this family.
+│  _editor        │
+└────────┬────────┘
+         │  1-2 selected stories
+    ┌────┴────┐
+    │         │
+    ▼         ▼
+┌───────┐  ┌──────────────────┐
+│  03   │  │  04_memory_cue   │  Designs the dog image concept.
+│whatsapp  │  _designer        │
+│copywriter└────────┬─────────┘
+│       │           │  concept
+└───┬───┘           ▼
+    │       ┌──────────────────┐
+    │       │  05_image_maker  │  Writes the DALL-E 3 prompt.
+    │       └────────┬─────────┘
+    │                │  prompt text
+    │                ▼
+    │       ┌──────────────────┐
+    │       │  06_image_       │  Generates the actual image via DALL-E 3.
+    │       │  generator       │  Hergé/Tintin ligne claire style.
+    │       └────────┬─────────┘
+    │                │  image URL
+    └────────────────┤
+                     ▼
+              ┌─────────────┐
+              │   Telegram  │  Message + image arrive on phone.
+              └─────────────┘
 ```
 
 ---
 
-## 5. The Six Agents
+## The Agent Directory
+
+Each agent has its own folder in `api/newswala/agents/`:
+
+```
+api/newswala/agents/
+├── README.md                      ← Team org chart and budget tracker
+├── 01_news_scout/
+│   ├── README.md                  ← Agent profile: persona, skills, handoffs
+│   └── system_prompt.txt          ← The exact instructions Claude receives ← EDIT THIS
+├── 02_family_fit_editor/
+│   ├── README.md
+│   └── system_prompt.txt          ← EDIT THIS
+├── 03_whatsapp_copywriter/
+│   ├── README.md
+│   └── system_prompt.txt          ← EDIT THIS (voice, word limit, sign-off)
+├── 04_memory_cue_designer/
+│   ├── README.md
+│   └── system_prompt.txt          ← EDIT THIS (dog breed, scene style)
+├── 05_image_maker/
+│   ├── README.md
+│   └── system_prompt.txt          ← EDIT THIS
+└── 06_image_generator/
+    ├── README.md                  ← Has 4 ready-to-swap art style examples
+    └── system_prompt.txt          ← Change FIRST LINE to switch art style
+```
+
+**To change an agent's behaviour:** open its `system_prompt.txt` on GitHub, click the pencil icon (edit), make your change, commit. The next run will use your new instructions. No Python needed.
+
+**To change the image style:** open `06_image_generator/system_prompt.txt` and replace the first line. Examples already in the file:
+- `Studio Ghibli watercolour style: soft pastel tones, hand-drawn warmth.`
+- `Pixar 3D animation style: rounded shapes, warm cinematic lighting.`
+- `Indian miniature painting style: rich jewel tones, ornate gold borders.`
+
+**To add a new agent:** create a new folder `07_your_agent/` with a `README.md` and `system_prompt.txt`, then add one function in `agents.py` and call it from `supervisor.py`.
+
+---
+
+## What Each Agent Does
 
 ### Agent 1 — news_scout
-**Role:** Searches the internet for today's best stories
+Wakes up, searches the web, and returns 4-6 fresh stories.
 
-- Uses Claude's live web search tool to scan the internet in real time
-- Looks across Economics, STEM, and India Current Affairs
-- Finds 4–6 candidate stories from credible sources
-- Scores each story on: credibility, novelty, inspiration, educational value, India relevance, child suitability, memorability, and lesson potential
-- Prefers sources like MIT News, MIT Outreach, India Today Education, Economic Times, Times of India, Bloomberg, Reuters, BBC, The Hindu, Mint, Nature, Financial Times
-
-**Avoids:** Celebrity gossip, crime, graphic content, partisan politics, clickbait
-
----
+- Runs **3 targeted searches** — one per category (Economics, STEM, Current Affairs)
+- Only accepts stories from the **last 48 hours** — nothing older
+- Scores each story on 8 dimensions: credibility, novelty, inspiration, educational value, India relevance, child suitability, memorability, lesson potential
+- Reads `newswala_history.json` and skips stories sent in the last 14 days
+- Preferred sources: The Hindu, LiveMint, Reuters, BBC, Business Standard, ISRO, PIB
 
 ### Agent 2 — family_fit_editor
-**Role:** Picks the best stories for this specific family
+Reads every candidate story through the eyes of an 11-year-old and an 18-year-old simultaneously.
 
-- Reviews all candidate stories from news_scout
-- Evaluates each one for age-appropriateness, emotional safety, educational value, and lesson potential
-- Selects the best **1 story** (or at most **2** if two are exceptional)
-- Rejects anything too dark, too political, or too trivial
-- Adds family-specific notes explaining why each story was chosen
-
----
+- Picks **1 story** (or at most 2 if both are exceptional and from different categories)
+- Rejects anything dark, political, violent, or anxiety-inducing
+- Adds a `why_selected` note explaining the choice
 
 ### Agent 3 — whatsapp_copywriter
-**Role:** Writes the message Yash and Pooja send to their daughters
+Writes the message in the voice of Yash and Pooja.
 
-- Writes in the voice of both parents together — warm, intelligent, modern Indian family
-- Keeps it short enough to read in 30 seconds
-- Includes a catchy opening, the story in simple language, and a memorable lesson line
-- Adds an optional thought-prompt question to spark conversation
-- Signs off: *Love, Mama & Papa*
-- Works for both an 11-year-old and an 18-year-old at the same time
-
-**Style rules:** No babyish tone. No preaching. No excessive emojis. No fake facts. No motivational clichés.
-
----
+- **Hard 180-word limit** — WhatsApp is not an essay
+- Warm, smart, modern Indian family tone
+- Structure: catchy opening → story in simple sentences → why it matters → one lesson → optional question → *Love, Mama & Papa*
+- Also writes a 3-4 line `shorter_variant` for quick sharing
 
 ### Agent 4 — memory_cue_designer
-**Role:** Designs an image concept to help the daughters remember the story
+Designs the daily image concept.
 
-- Always features the family's **cocker spaniel** doing something connected to the story
-- Creates a charming, whimsical visual mnemonic
-- Examples:
-  - Space story → cocker spaniel in a mini astronaut helmet pointing at a rocket
-  - Economics story → cocker spaniel arranging coins into a rising bar graph
-  - Indian science breakthrough → cocker spaniel in a lab coat next to a glowing invention
-
----
+- The **cocker spaniel must appear in every image** doing something directly tied to the story
+- 1-3 visual elements maximum — simple and memorable
+- Space story → dog in spacesuit. Economics story → dog arranging coins. Science story → dog in lab coat.
 
 ### Agent 5 — image_maker
-**Role:** Turns the image concept into a ready-to-use image generation prompt
+Translates the concept into precise DALL-E 3 instructions.
 
-- Writes a detailed prompt for DALL-E, Midjourney, or Stable Diffusion
-- Square format (WhatsApp-friendly)
-- Bright, warm, digital illustration style
-- Cocker spaniel is always the visual centre
+- Writes the prompt that image_generator will send to OpenAI
+- Always in **Hergé/Tintin ligne claire style** (unless you've changed it in `system_prompt.txt`)
+- Includes a negative prompt (what NOT to draw)
 
----
+### Agent 6 — image_generator
+The only agent that isn't Claude — it calls OpenAI's DALL-E 3 API.
 
-### Agent 6 — newswala (Supervisor)
-**Role:** Orchestrates all agents and validates the final output
-
-- Runs the full pipeline in sequence
-- Handles errors and retries at each step
-- Validates the output against quality checks
-- Delivers the final package to Telegram
+- Prepends the style guide from its `system_prompt.txt` to the prompt
+- Generates a **1024×1024 standard quality** image (~$0.04)
+- Returns the image URL → Telegram sends it as a photo directly to your phone
+- If `OPENAI_API_KEY` is not set, it skips gracefully and sends the text prompt instead
 
 ---
 
-## 6. Daily Output
+## What Arrives on Telegram Each Morning
 
-Every morning the system produces:
-
-### WhatsApp Message
-```
-Hey Manishka & Divyana! 🌟
-
-[Story in 3-4 simple sentences]
-
-[Why it's interesting / what's cool]
-
-[One memorable lesson line]
-
-[Optional: a short question to think about]
-
-Love, Mama & Papa
-```
-
-### Short Variant
-A 3-4 line version for quick sharing.
-
-### Image Prompt
-A ready-to-paste prompt for DALL-E or Midjourney featuring the cocker spaniel.
-
-### Quality Checks
-Every output is automatically validated for:
-- Age appropriateness
-- Comes from both parents
-- Contains cocker spaniel
-- WhatsApp length (under 800 characters)
-- Lesson line present
-- Factual confidence (high / medium)
+1. **Header** — date, story titles, categories
+2. **WhatsApp message** — the full text, ready to copy-paste
+3. **Short variant** — 3-4 lines for quick sharing
+4. **Lesson line** — the standalone memorable sentence
+5. **The image** — actual Tintin-style illustration sent as a photo (or the text prompt if no OpenAI key)
+6. **Quality summary** — age-appropriate ✅, length OK ✅, factual confidence ✅
 
 ---
 
-## 7. News Categories & Sources
+## No Repeat News
 
-| Category | Examples |
-|---|---|
-| Economics | RBI policy, India GDP, global markets with an educational angle, startup ecosystem |
-| STEM | Space (ISRO), AI breakthroughs, medical discoveries, climate science, Indian innovation |
-| Current Affairs | India on the world stage, geopolitics with context, social progress stories |
+NewsWala remembers what it has sent. After each run it saves the story titles to `newswala_history.json` at the project root. On the next run, news_scout reads this file and explicitly avoids those topics.
 
-**Preferred sources:** Reuters, BBC, The Hindu, Indian Express, Mint, LiveMint, Business Standard, Financial Times, The Economist, ISRO/PIB, Nature, Science
+- History window: **14 days**
+- If the file doesn't exist yet (first run), it starts fresh
 
 ---
 
-## 8. Technology Stack
+## Cost
+
+| Component | What it does | Model | ~Daily | ~Monthly |
+|---|---|---|---|---|
+| news_scout | Web search + story selection | Sonnet 4.6 | $0.030 | $0.90 |
+| family_fit_editor | Pick best stories | Haiku 4.5 | $0.003 | $0.09 |
+| whatsapp_copywriter | Write the message | Sonnet 4.6 | $0.010 | $0.30 |
+| memory_cue_designer | Design image concept | Haiku 4.5 | $0.001 | $0.03 |
+| image_maker | Write DALL-E prompt | Haiku 4.5 | $0.001 | $0.03 |
+| image_generator | Generate image | DALL-E 3 | $0.040 | $1.20 |
+| GitHub Actions | Cloud scheduler | — | free | free |
+| **Total** | | | **~$0.085** | **~$2.55** |
+
+Budget: **$5/month**. Current spend: **~$2.55/month** ✅
+
+---
+
+## Technology Stack
 
 | Component | Technology |
 |---|---|
-| AI / LLM | Claude Opus 4.6 (Anthropic) |
-| Web Search | Claude's built-in web_search tool |
-| Language | Python 3 |
-| Delivery | Telegram Bot API |
-| Scheduling | PythonAnywhere scheduled tasks |
-| Code hosting | GitHub (github.com/yashrajerande/NewsWala) |
+| AI agents | Claude Sonnet 4.6 + Haiku 4.5 (Anthropic) |
+| Web search | Claude's built-in `web_search` tool (server-side, no extra cost) |
+| Image generation | DALL-E 3 (OpenAI) |
+| Language | Python 3.11 |
+| Delivery | Telegram Bot API (no extra libraries — uses Python's built-in `urllib`) |
+| Scheduling | GitHub Actions (free tier — 2,000 min/month) |
+| Code hosting | GitHub — github.com/yashrajerande/NewsWala |
 
 ---
 
-## 9. Setup Requirements
+## Secret Keys
 
-| Credential | Where to get it |
-|---|---|
-| `ANTHROPIC_API_KEY` | console.anthropic.com |
-| `TELEGRAM_BOT_TOKEN` | @BotFather on Telegram |
-| `TELEGRAM_CHAT_ID` | api.telegram.org/bot{token}/getUpdates |
+Three keys are required. They live as **GitHub Secrets** (Settings → Secrets → Actions) — never in the code.
 
-These are stored in a `.env` file on PythonAnywhere (never shared publicly).
+| Secret name | What it's for | Where to get it |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Runs all Claude agents | console.anthropic.com |
+| `TELEGRAM_BOT_TOKEN` | Sends messages to your phone | @BotFather on Telegram |
+| `TELEGRAM_CHAT_ID` | Identifies your chat | api.telegram.org/bot{token}/getUpdates |
+| `OPENAI_API_KEY` | Generates the daily image | platform.openai.com *(optional)* |
 
----
-
-## 10. How to Run
-
-```bash
-# One-time test
-python newswala.py --telegram
-
-# Daily scheduled run (automated via PythonAnywhere)
-python newswala_daily.py
-```
+If `OPENAI_API_KEY` is not set, the image step is skipped and the DALL-E prompt is sent as text instead.
 
 ---
 
-## 11. File Structure
+## File Structure
 
 ```
 NewsWala/
-├── newswala.py              ← Main runner (you run this)
-├── newswala_daily.py        ← Scheduled runner (PythonAnywhere runs this)
-├── .env                     ← Your secret keys (never share this)
-├── .env.example             ← Template showing what keys are needed
+├── .github/
+│   └── workflows/
+│       └── daily_news.yml       ← GitHub Actions schedule (runs at 6 AM IST)
+│
+├── newswala.py                  ← Run manually: python newswala.py --telegram
+├── newswala_daily.py            ← Silent runner used by GitHub Actions
+├── .env.example                 ← Template for secret keys
+│
 ├── api/
 │   └── newswala/
-│       ├── config.py        ← Family names, sources, constraints
-│       ├── agents.py        ← All 5 sub-agents
-│       ├── supervisor.py    ← Orchestrator + quality checker
-│       ├── run.py           ← CLI entry point
-│       ├── telegram_sender.py ← Telegram delivery
-│       └── flask_api.py     ← Web API (optional)
-└── NEWSWALA_DESIGN.md       ← This document
+│       ├── agents/              ← One folder per agent — edit behaviour here
+│       │   ├── README.md        ← Team org chart + budget
+│       │   ├── 01_news_scout/
+│       │   │   ├── README.md    ← Agent profile card
+│       │   │   └── system_prompt.txt  ← Agent instructions (editable)
+│       │   ├── 02_family_fit_editor/
+│       │   ├── 03_whatsapp_copywriter/
+│       │   ├── 04_memory_cue_designer/
+│       │   ├── 05_image_maker/
+│       │   └── 06_image_generator/
+│       │
+│       ├── agents.py            ← Agent functions (loads prompts from agents/ folder)
+│       ├── supervisor.py        ← Pipeline orchestrator
+│       ├── config.py            ← Family names, ages, sources, constraints
+│       ├── telegram_sender.py   ← Telegram delivery
+│       └── run.py               ← CLI flags (--telegram, --date, --save, etc.)
+│
+├── newswala_history.json        ← Auto-created. Stories sent in the last 14 days.
+└── NEWSWALA_DESIGN.md           ← This document
 ```
 
 ---
 
-## 12. What Yash & Pooja Do Each Morning
+## How to Run Manually
 
-1. Open **Telegram** on phone
-2. See the digest waiting
+```bash
+# Full run — generates digest and sends to Telegram
+python newswala.py --telegram
+
+# Full run — saves output to a JSON file as well
+python newswala.py --telegram --save
+
+# Test a specific date
+python newswala.py --date 2026-04-01 --telegram
+
+# Check Telegram is connected (sends a test message)
+python newswala.py --setup-telegram
+```
+
+---
+
+## What Yash & Pooja Do Each Morning
+
+1. Open **Telegram**
+2. See the digest and image already waiting
 3. Long-press the WhatsApp message → **Copy**
-4. Open **WhatsApp** → paste into family group
-5. Optionally generate the image using the prompt in DALL-E or Midjourney
-6. Done — takes under 60 seconds
+4. Open WhatsApp → paste into the family group
+5. Optionally forward the image too
+
+Total time: under 60 seconds.
 
 ---
 
-## 13. Future Ideas
+## Future Ideas
 
-- [ ] Generate the image automatically and send it directly to Telegram
-- [ ] Add a weekly "best of the week" digest
-- [ ] Let Manishka and Divyana reply with reactions that personalise future stories
-- [ ] Add a Hindi/Hinglish mode for the message
-- [ ] Track which stories got the best family engagement
-- [ ] Birthday edition — special digest on Manishka's and Divyana's birthdays
+- [ ] Birthday edition — special digest on Manishka's (24 Oct) and Divyana's (12 Jul) birthdays
+- [ ] Weekly "best of the week" summary every Sunday
+- [ ] Let Manishka and Divyana reply with reactions that shape future story selection
+- [ ] Hindi/Hinglish mode
+- [ ] Track which stories got the best engagement
+- [ ] Audio version — short voice note read by an AI voice
 
 ---
 
-*Built with Claude Opus 4.6 · Delivered via Telegram · Made with love by Yash & Pooja*
+*Built with Claude Sonnet 4.6 & Haiku 4.5 · Images by DALL-E 3 · Delivered via Telegram · Scheduled on GitHub Actions · Made with love by Yash & Pooja*
