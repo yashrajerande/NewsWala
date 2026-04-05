@@ -260,11 +260,13 @@ def news_scout(run_date: str) -> list[dict]:
         f"{avoid_block}"
     )}]
 
-    tools    = [{"type": "web_search_20260209", "name": "web_search"}]
+    # max_uses=3 caps web searches at exactly 3 (one per category).
+    # Without this cap the model runs 10-20+ searches → 300k+ tokens → $1+/run.
+    tools    = [{"type": "web_search_20260209", "name": "web_search", "max_uses": 3}]
     text     = ""
     n_search = 0
 
-    for attempt in range(2):
+    for attempt in range(1):  # single pass — max_uses handles the search limit
         with client.messages.stream(
             model=SCOUT_MODEL, max_tokens=3000,
             system=_SCOUT_SYSTEM, tools=tools, messages=messages,
