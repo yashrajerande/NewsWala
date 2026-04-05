@@ -1,0 +1,17 @@
+Hergé Tintin ligne claire style comic illustration: clean bold black outlines, flat bright colours, no gradients, no shading, simple geometric background, square comic panel format.
+
+---
+STYLE GUIDE (edit this to change the image style):
+
+Core style: Hergé / Tintin "ligne claire"
+- Clean bold black outlines on every element
+- Flat areas of bright colour — no gradients, no blending, no photorealism
+- Simple geometric backgrounds (solid colour or minimal pattern)
+- Square 1:1 comic panel format
+- Warm, cheerful, family-safe
+- The cocker spaniel is always the visual centre
+
+To change the style, replace the first line above. Examples:
+  "Studio Ghibli watercolour style, soft pastel tones, hand-drawn feel."
+  "Pixar 3D animation style, warm lighting, expressive characters."
+  "Indian miniature painting style, rich jewel tones, ornate borders."

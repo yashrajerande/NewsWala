@@ -45,6 +45,24 @@ client = anthropic.Anthropic()
 _HISTORY_FILE = Path(__file__).resolve().parents[2] / "newswala_history.json"
 _HISTORY_DAYS = 14   # remember stories from the last 14 days
 
+# --- agent directory — system prompts live here, editable without Python -----
+_AGENTS_DIR = Path(__file__).parent / "agents"
+
+
+def _load_prompt(agent_folder: str) -> str:
+    """
+    Load a system prompt from agents/<folder>/system_prompt.txt.
+    Edit that file to change the agent's behaviour — no Python needed.
+    """
+    p = _AGENTS_DIR / agent_folder / "system_prompt.txt"
+    try:
+        return p.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            f"System prompt not found: {p}\n"
+            f"Expected file: api/newswala/agents/{agent_folder}/system_prompt.txt"
+        )
+
 
 # ---------------------------------------------------------------------------
 # terminal helpers
@@ -200,37 +218,9 @@ def _parse_json(text: str, shape: str = "object") -> dict | list:
 # Cost: ~$0.03-0.05/day
 # ---------------------------------------------------------------------------
 
-_SCOUT_SYSTEM = """You are news_scout for NewsWala, a daily family digest.
-
-STRICT RULES:
-1. ONLY stories published TODAY or yesterday (last 48 hours). Reject anything older.
-2. MUST find stories across ALL THREE categories — at least 1-2 from each:
-   - Economics & Business (India economy, markets, policy, startups, trade)
-   - STEM & Science (space, AI, medicine, climate, tech breakthroughs)
-   - Current Affairs & Policy (governance, education, India on world stage,
-     social progress, geopolitics with educational angle)
-3. Age-safe for an 11-year-old. No crime, violence, partisan politics.
-4. Each story must have a clear lesson or moral.
-5. Prefer India-relevant stories. Global stories must have clear India connection.
-
-Return ONLY a JSON array of 4-6 stories — at least 1 per category:
-[{
-  "title": str,
-  "category": "Economics | STEM | Current Affairs",
-  "source": str,
-  "url": str,
-  "published_date": "YYYY-MM-DD or 'today'",
-  "summary": "2-3 sentences",
-  "why_interesting": str,
-  "india_relevance": str,
-  "scores": {
-    "credibility": N, "novelty": N, "inspiration": N,
-    "educational_value": N, "india_relevance": N,
-    "child_suitability": N, "memorability": N,
-    "lesson_potential": N, "total": N
-  },
-  "lesson_or_moral": str
-}]"""
+# System prompts are loaded from agents/<folder>/system_prompt.txt
+# Edit those files directly to change agent behaviour — no Python needed.
+_SCOUT_SYSTEM  = _load_prompt("01_news_scout")
 
 
 def news_scout(run_date: str) -> list[dict]:
@@ -348,20 +338,7 @@ def news_scout(run_date: str) -> list[dict]:
 # Cost: ~$0.003-0.005/day
 # ---------------------------------------------------------------------------
 
-_EDITOR_SYSTEM = """You are family_fit_editor for NewsWala.
-
-Pick the BEST 1 story (2 only if two are truly exceptional and from DIFFERENT categories).
-Requirements:
-- Age-safe for an 11-year-old
-- Clear memorable lesson
-- Emotionally uplifting, not scary or negative
-- No partisan politics, no graphic content
-- Prefer variety: if picking 2, choose different categories
-
-Return ONLY a JSON array of selected stories with original fields plus:
-  "why_selected": str
-  "family_fit_notes": str
-  "lesson_or_moral": str"""
+_EDITOR_SYSTEM = _load_prompt("02_family_fit_editor")
 
 
 def family_fit_editor(candidates: list[dict]) -> list[dict]:
@@ -412,30 +389,7 @@ def family_fit_editor(candidates: list[dict]) -> list[dict]:
 # Cost: ~$0.01-0.015/day
 # ---------------------------------------------------------------------------
 
-_COPY_SYSTEM = """You are whatsapp_copywriter for NewsWala.
-
-Write a short warm WhatsApp message from Yash and Pooja to daughters Manishka (18) and Divyana (11).
-
-HARD LIMIT: main_message must be under 180 words. Count carefully.
-Voice: thoughtful modern Indian family. Warm but smart.
-No preaching. No babyish tone. No clichés. Max 2 emojis. Factually accurate.
-
-Structure:
-1. Catchy opening line
-2. Story in 2-3 plain sentences (accurate, simple for an 11-year-old)
-3. Why it's cool / why it matters
-4. ONE memorable lesson sentence
-5. Optional: one short thought-prompt question
-6. Sign-off: "Love, Mama & Papa"
-
-Return ONLY valid JSON (no markdown, no code blocks):
-{
-  "main_message": "under 180 words including sign-off",
-  "lesson_line": "the standalone lesson sentence",
-  "shorter_variant": "3-4 lines max",
-  "optional_thought_prompt": "one question",
-  "signoff": "Love, Mama & Papa"
-}"""
+_COPY_SYSTEM = _load_prompt("03_whatsapp_copywriter")
 
 
 def whatsapp_copywriter(selected_stories: list[dict]) -> dict:
@@ -486,14 +440,7 @@ def whatsapp_copywriter(selected_stories: list[dict]) -> dict:
 # Uses Haiku. Cost: ~$0.001/day
 # ---------------------------------------------------------------------------
 
-_CUE_SYSTEM = """You are memory_cue_designer for NewsWala.
-
-Design a charming image concept using the family's cocker spaniel as a visual
-memory hook for the news story. The dog MUST be a cocker spaniel doing something
-directly tied to the story. Warm, whimsical, simple (1-3 elements), square format.
-
-Return ONLY valid JSON (no markdown, no code blocks):
-{"concept": str, "visual_elements": [str], "colour_mood": str, "memory_hook": str}"""
+_CUE_SYSTEM = _load_prompt("04_memory_cue_designer")
 
 
 def memory_cue_designer(selected_stories: list[dict]) -> dict:
@@ -536,15 +483,7 @@ def memory_cue_designer(selected_stories: list[dict]) -> dict:
 # Uses Haiku. Cost: ~$0.001/day
 # ---------------------------------------------------------------------------
 
-_IMG_SYSTEM = """You are image_maker for NewsWala.
-
-Turn an image concept into a DALL-E 3 prompt.
-Requirements: square 1:1, cocker spaniel as visual centre, Hergé Tintin ligne
-claire style (clean bold outlines, flat bright colours, no gradients),
-warm family-friendly palette, clean simple composition, 3 elements max.
-
-Return ONLY valid JSON (no markdown, no code blocks):
-{"image_prompt": str, "negative_prompt": str, "style_tags": [str], "alt_text": str}"""
+_IMG_SYSTEM = _load_prompt("05_image_maker")
 
 
 def image_maker(concept: dict, selected_stories: list[dict]) -> dict:
@@ -591,16 +530,12 @@ def image_maker(concept: dict, selected_stories: list[dict]) -> dict:
 # Requires OPENAI_API_KEY in environment. Skips gracefully if not set.
 # ---------------------------------------------------------------------------
 
-_TINTIN_PREFIX = (
-    "Hergé Tintin ligne claire style comic illustration: "
-    "clean bold black outlines, flat bright colours, no gradients, no shading, "
-    "simple geometric background, square comic panel format. "
-)
-
-
 def image_generator(image_prompt: str) -> dict:
     """
     Generate the actual image using DALL-E 3.
+
+    Style is controlled by agents/06_image_generator/system_prompt.txt —
+    edit the first line of that file to change art style (no Python needed).
 
     Returns:
         {"url": str, "revised_prompt": str}   on success
@@ -612,14 +547,18 @@ def image_generator(image_prompt: str) -> dict:
         _step("OPENAI_API_KEY not set — skipping image generation (sending text prompt instead)")
         return {}
 
+    # Style prefix: first line of system_prompt.txt (the rest is documentation)
+    style_guide = _load_prompt("06_image_generator").split("\n")[0].strip()
+
     _bar("🎨  image_generator  |  DALL-E 3  (~$0.04)", GREEN)
-    _step("Generating Hergé/Tintin style image...")
+    _step(f"Style: {style_guide[:80]}...")
+    _step("Generating image...")
 
     try:
         import openai
         oa_client = openai.OpenAI(api_key=api_key)
 
-        full_prompt = _TINTIN_PREFIX + image_prompt
+        full_prompt = style_guide + " " + image_prompt
         # DALL-E 3 prompt limit: 4000 chars
         if len(full_prompt) > 3900:
             full_prompt = full_prompt[:3900]
