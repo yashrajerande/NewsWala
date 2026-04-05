@@ -1,3 +1,9 @@
+> **This document is for understanding purposes only.**
+> It describes how the system works but does not control it.
+> To change agent behaviour, edit the files in `ErandeNewsCorp/agents/`.
+
+---
+
 # NewsWala — How This Project Works
 
 **Version:** 2.0  

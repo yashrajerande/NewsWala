@@ -54,7 +54,9 @@ _HISTORY_FILE = Path(__file__).resolve().parents[2] / "newswala_history.json"
 _HISTORY_DAYS = 14   # remember stories from the last 14 days
 
 # --- agent directory — system prompts live here, editable without Python -----
-_AGENTS_DIR = Path(__file__).parent / "agents"
+# Agents live in ErandeNewsCorp/ at the repo root (visible on GitHub as employees)
+# From api/newswala/agents.py → up 2 levels → repo root → ErandeNewsCorp/agents
+_AGENTS_DIR = Path(__file__).resolve().parents[2] / "ErandeNewsCorp" / "agents"
 
 
 def _load_prompt(agent_folder: str) -> str:
