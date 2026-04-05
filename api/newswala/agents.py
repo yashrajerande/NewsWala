@@ -59,16 +59,17 @@ _AGENTS_DIR = Path(__file__).parent / "agents"
 
 def _load_prompt(agent_folder: str) -> str:
     """
-    Load a system prompt from agents/<folder>/system_prompt.txt.
-    Edit that file to change the agent's behaviour — no Python needed.
+    Load instructions from agents/<folder>/instructions.md.
+    Edit that file to change the agent's role — no Python needed.
+    Skills are loaded separately and injected at runtime.
     """
-    p = _AGENTS_DIR / agent_folder / "system_prompt.txt"
+    p = _AGENTS_DIR / agent_folder / "instructions.md"
     try:
         return p.read_text(encoding="utf-8").strip()
     except FileNotFoundError:
         raise FileNotFoundError(
-            f"System prompt not found: {p}\n"
-            f"Expected file: api/newswala/agents/{agent_folder}/system_prompt.txt"
+            f"Instructions not found: {p}\n"
+            f"Expected file: api/newswala/agents/{agent_folder}/instructions.md"
         )
 
 
@@ -377,6 +378,8 @@ def news_scout(run_date: str) -> list[dict]:
 
     # --- ask Haiku to score and select best 4-6 (tiny token cost) -----------
     _step(f"Scoring with {SCOUT_MODEL} (~{len(all_stories[:25])} stories)...")
+    skill   = _load_skill("india-news-scoring")
+    _SCOUT  = _SCOUT_SYSTEM + (f"\n\n---\n## SKILL: india-news-scoring\n{skill}" if skill else "")
 
     story_list = "\n\n".join(
         f"[{i+1}] [{s['category']}] {'⭐ ' if s['priority'] else ''}{s['source']}\n"
@@ -394,7 +397,7 @@ def news_scout(run_date: str) -> list[dict]:
     text = ""
     with client.messages.stream(
         model=SCOUT_MODEL, max_tokens=3000,
-        system=_SCOUT_SYSTEM,
+        system=_SCOUT,
         messages=[{"role": "user", "content": (
             f"Today: {run_date}. ⭐ marks priority sources.\n\n"
             f"Stories to score:\n{story_list}"
@@ -447,12 +450,14 @@ def family_fit_editor(candidates: list[dict]) -> list[dict]:
     """Filter to best 1-2 stories. Uses Haiku for speed and cost."""
     _bar(f"🧐  family_fit_editor  |  {len(candidates)} candidates  |  {FAST_MODEL}", MAGENTA)
     _step("Evaluating age-safety, lesson quality, category spread...")
+    skill   = _load_skill("family-editorial-filter")
+    _EDITOR = _EDITOR_SYSTEM + (f"\n\n---\n## SKILL: family-editorial-filter\n{skill}" if skill else "")
     print(f"\n  {MAGENTA}Filtering:{RESET}\n  {'─'*50}\n  ", end="")
 
     text = ""
     with client.messages.stream(
         model=FAST_MODEL, max_tokens=2000,
-        system=_EDITOR_SYSTEM,
+        system=_EDITOR,
         messages=[{"role": "user", "content": (
             f"Candidates:\n{json.dumps(candidates, indent=2)}\n\n"
             f"Pick the best 1 (or at most 2 from different categories)."
@@ -498,12 +503,14 @@ def whatsapp_copywriter(selected_stories: list[dict]) -> dict:
     """Write the WhatsApp message. Streams the draft live."""
     _bar(f"✍️   whatsapp_copywriter  |  {WRITE_MODEL}", BLUE)
     _step("Writing family message (max 180 words)...")
+    skill  = _load_skill("whatsapp-family-message")
+    _COPY  = _COPY_SYSTEM + (f"\n\n---\n## SKILL: whatsapp-family-message\n{skill}" if skill else "")
     print(f"\n  {BLUE}Draft:{RESET}\n  {'─'*50}\n  ", end="")
 
     text = ""
     with client.messages.stream(
         model=WRITE_MODEL, max_tokens=1000,
-        system=_COPY_SYSTEM,
+        system=_COPY,
         messages=[{"role": "user", "content":
                    f"Stories:\n{json.dumps(selected_stories, indent=2)}"}],
     ) as stream:
@@ -549,12 +556,14 @@ def memory_cue_designer(selected_stories: list[dict]) -> dict:
     """Design the cocker spaniel image concept."""
     _bar(f"🎨  memory_cue_designer  |  {FAST_MODEL}", YELLOW)
     _step("Designing cocker spaniel visual memory cue...")
+    skill = _load_skill("visual-memory-cue")
+    _CUE  = _CUE_SYSTEM + (f"\n\n---\n## SKILL: visual-memory-cue\n{skill}" if skill else "")
     print(f"\n  {YELLOW}Concept:{RESET}\n  {'─'*50}\n  ", end="")
 
     text = ""
     with client.messages.stream(
         model=FAST_MODEL, max_tokens=500,
-        system=_CUE_SYSTEM,
+        system=_CUE,
         messages=[{"role": "user", "content":
                    f"Design concept for:\n{json.dumps(selected_stories, indent=2)}"}],
     ) as stream:
