@@ -76,7 +76,7 @@ Evaluating age-safety, lesson quality, category spread...
 
 ## Edit My Behaviour
 
-Open [`system_prompt.txt`](./system_prompt.txt) to change:
+Open [`instructions.md`](./instructions.md) to change:
 - How many stories to select (currently max 2)
 - What makes something age-appropriate
 - Scoring weights

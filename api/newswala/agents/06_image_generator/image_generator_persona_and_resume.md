@@ -33,7 +33,7 @@ If `OPENAI_API_KEY` is not set, this agent gracefully steps aside and the text p
 
 **Values:**
 - Hergé/Tintin ligne claire is the house style (bold outlines, flat colours, no gradients)
-- The style can be changed — it lives in `system_prompt.txt`, not in Python code
+- The style can be changed — it lives in `instructions.md`, not in Python code
 - Graceful degradation — never crashes the pipeline if image generation fails
 - Fast — one API call, no retries needed
 
@@ -44,7 +44,7 @@ If `OPENAI_API_KEY` is not set, this agent gracefully steps aside and the text p
 | Skill | Description |
 |-------|-------------|
 | 🎨 **DALL-E 3 generation** | Calls OpenAI Images API with `model="dall-e-3"` |
-| 🖌️ **Style prefix injection** | Prepends the Hergé/Tintin style guide from `system_prompt.txt` |
+| 🖌️ **Style prefix injection** | Prepends the Hergé/Tintin style guide from `instructions.md` |
 | 📤 **URL extraction** | Returns the generated image URL for Telegram to send |
 | ⚡ **Graceful fallback** | Returns `{}` if key not set or API fails — pipeline continues |
 
@@ -68,7 +68,7 @@ If `OPENAI_API_KEY` is not set, this agent gracefully steps aside and the text p
 
 ## Change the Art Style
 
-Open [`system_prompt.txt`](./system_prompt.txt) — the **first line** is the style prefix added to every image.
+Open [`instructions.md`](./instructions.md) — the **first line** is the style prefix added to every image.
 
 **Currently:** Hergé/Tintin ligne claire
 ```

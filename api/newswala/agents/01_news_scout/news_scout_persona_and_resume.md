@@ -79,7 +79,7 @@
 
 ## Edit My Behaviour
 
-Open [`system_prompt.txt`](./system_prompt.txt) to change:
+Open [`instructions.md`](./instructions.md) to change:
 - Which categories to search
 - What sources to prefer
 - Scoring criteria

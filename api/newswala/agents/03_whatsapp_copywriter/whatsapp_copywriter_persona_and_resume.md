@@ -76,7 +76,7 @@ Hey girls! Did you know India just...
 
 ## Edit My Behaviour
 
-Open [`system_prompt.txt`](./system_prompt.txt) to change:
+Open [`instructions.md`](./instructions.md) to change:
 - Word limit (currently 180)
 - Sign-off text (currently "Love, Mama & Papa")
 - Number of emojis allowed

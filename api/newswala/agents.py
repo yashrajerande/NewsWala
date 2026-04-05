@@ -60,8 +60,7 @@ _AGENTS_DIR = Path(__file__).parent / "agents"
 def _load_prompt(agent_folder: str) -> str:
     """
     Load instructions from agents/<folder>/instructions.md.
-    Edit that file to change the agent's role — no Python needed.
-    Skills are loaded separately and injected at runtime.
+    Edit that file to change the agent's task — no Python needed.
     """
     p = _AGENTS_DIR / agent_folder / "instructions.md"
     try:
@@ -69,8 +68,48 @@ def _load_prompt(agent_folder: str) -> str:
     except FileNotFoundError:
         raise FileNotFoundError(
             f"Instructions not found: {p}\n"
-            f"Expected file: api/newswala/agents/{agent_folder}/instructions.md"
+            f"Expected: api/newswala/agents/{agent_folder}/instructions.md"
         )
+
+
+def _load_persona(agent_folder: str) -> str:
+    """
+    Load persona from agents/<folder>/<agent_name>_persona_and_resume.md.
+    This shapes Claude's character, voice, and values — loaded into every system prompt.
+    Edit the persona file to change how the agent thinks and talks.
+    """
+    folder = _AGENTS_DIR / agent_folder
+    matches = list(folder.glob("*_persona_and_resume.md"))
+    if not matches:
+        return ""
+    try:
+        return matches[0].read_text(encoding="utf-8").strip()
+    except Exception:
+        return ""
+
+
+def _build_system(agent_folder: str, skill_name: str = "") -> str:
+    """
+    Assemble the full system prompt for an agent:
+      [persona_and_resume]  — who I am, my voice, my values
+      ---
+      [instructions]        — my task for this run
+      ---
+      [skill]               — the methodology I apply
+    """
+    persona      = _load_persona(agent_folder)
+    instructions = _load_prompt(agent_folder)
+    skill        = _load_skill(skill_name) if skill_name else ""
+
+    parts = []
+    if persona:
+        parts.append(persona)
+    if instructions:
+        parts.append(instructions)
+    if skill:
+        parts.append(f"## SKILL: {skill_name}\n{skill}")
+
+    return "\n\n---\n\n".join(parts)
 
 
 def _load_skill(skill_name: str) -> str:
@@ -378,8 +417,7 @@ def news_scout(run_date: str) -> list[dict]:
 
     # --- ask Haiku to score and select best 4-6 (tiny token cost) -----------
     _step(f"Scoring with {SCOUT_MODEL} (~{len(all_stories[:25])} stories)...")
-    skill   = _load_skill("india-news-scoring")
-    _SCOUT  = _SCOUT_SYSTEM + (f"\n\n---\n## SKILL: india-news-scoring\n{skill}" if skill else "")
+    _SCOUT = _build_system("01_news_scout", "india-news-scoring")
 
     story_list = "\n\n".join(
         f"[{i+1}] [{s['category']}] {'⭐ ' if s['priority'] else ''}{s['source']}\n"
@@ -450,8 +488,7 @@ def family_fit_editor(candidates: list[dict]) -> list[dict]:
     """Filter to best 1-2 stories. Uses Haiku for speed and cost."""
     _bar(f"🧐  family_fit_editor  |  {len(candidates)} candidates  |  {FAST_MODEL}", MAGENTA)
     _step("Evaluating age-safety, lesson quality, category spread...")
-    skill   = _load_skill("family-editorial-filter")
-    _EDITOR = _EDITOR_SYSTEM + (f"\n\n---\n## SKILL: family-editorial-filter\n{skill}" if skill else "")
+    _EDITOR = _build_system("02_family_fit_editor", "family-editorial-filter")
     print(f"\n  {MAGENTA}Filtering:{RESET}\n  {'─'*50}\n  ", end="")
 
     text = ""
@@ -503,8 +540,7 @@ def whatsapp_copywriter(selected_stories: list[dict]) -> dict:
     """Write the WhatsApp message. Streams the draft live."""
     _bar(f"✍️   whatsapp_copywriter  |  {WRITE_MODEL}", BLUE)
     _step("Writing family message (max 180 words)...")
-    skill  = _load_skill("whatsapp-family-message")
-    _COPY  = _COPY_SYSTEM + (f"\n\n---\n## SKILL: whatsapp-family-message\n{skill}" if skill else "")
+    _COPY = _build_system("03_whatsapp_copywriter", "whatsapp-family-message")
     print(f"\n  {BLUE}Draft:{RESET}\n  {'─'*50}\n  ", end="")
 
     text = ""
@@ -556,8 +592,7 @@ def memory_cue_designer(selected_stories: list[dict]) -> dict:
     """Design the cocker spaniel image concept."""
     _bar(f"🎨  memory_cue_designer  |  {FAST_MODEL}", YELLOW)
     _step("Designing cocker spaniel visual memory cue...")
-    skill = _load_skill("visual-memory-cue")
-    _CUE  = _CUE_SYSTEM + (f"\n\n---\n## SKILL: visual-memory-cue\n{skill}" if skill else "")
+    _CUE = _build_system("04_memory_cue_designer", "visual-memory-cue")
     print(f"\n  {YELLOW}Concept:{RESET}\n  {'─'*50}\n  ", end="")
 
     text = ""
@@ -600,13 +635,8 @@ _IMG_SYSTEM = _load_prompt("05_image_maker")
 def image_maker(concept: dict, selected_stories: list[dict]) -> dict:
     """Write the image prompt — injects the tintin-type-image skill at runtime."""
     _bar(f"🖼️   image_maker  |  {FAST_MODEL}", GREEN)
-    _step("Loading skill: tintin-type-image...")
-
-    skill = _load_skill("tintin-type-image")
-    system = _IMG_SYSTEM
-    if skill:
-        system = f"{_IMG_SYSTEM}\n\n---\n## SKILL: Tintin type image\n{skill}"
-        _step("Skill injected into system prompt ✓")
+    _step("Building system prompt (persona + instructions + skill)...")
+    system = _build_system("05_image_maker", "tintin-type-image")
 
     print(f"\n  {GREEN}Prompt:{RESET}\n  {'─'*50}\n  ", end="")
 

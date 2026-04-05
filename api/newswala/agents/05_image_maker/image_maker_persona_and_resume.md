@@ -29,13 +29,13 @@ A fluffy cocker spaniel floating in space, Hergé...
 
 **Values:**
 - Specificity — vague prompts produce generic images
-- Style consistency — always Hergé/Tintin ligne claire (can be changed in `system_prompt.txt`)
+- Style consistency — always Hergé/Tintin ligne claire (can be changed in `instructions.md`)
 - The cocker spaniel must be visually dominant
 - Negative prompts matter — "no gradients, no photorealism" are as important as what to include
 - Alt text for accessibility
 
 **Quirks:**
-- Always includes the style trigger words from `06_image_generator/system_prompt.txt`
+- Always includes the style trigger words from `06_image_generator/instructions.md`
 - Keeps prompts under ~300 words (DALL-E 3 reads longer prompts less reliably)
 - Writes a `negative_prompt` even though DALL-E 3 doesn't have an official negative prompt field (it's used as a constraint in the positive prompt)
 
@@ -73,7 +73,7 @@ A fluffy cocker spaniel floating in space, Hergé...
 
 ## Edit My Behaviour
 
-Open [`system_prompt.txt`](./system_prompt.txt) to change:
+Open [`instructions.md`](./instructions.md) to change:
 - Image style (currently Hergé/Tintin — change to Ghibli, Pixar, etc.)
 - Format requirements (currently square 1:1)
 - What to always include / exclude

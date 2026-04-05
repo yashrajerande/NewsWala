@@ -72,7 +72,7 @@ A golden cocker spaniel sitting on a tiny rocket...
 
 ## Edit My Behaviour
 
-Open [`system_prompt.txt`](./system_prompt.txt) to change:
+Open [`instructions.md`](./instructions.md) to change:
 - The dog breed (currently: cocker spaniel — change if you get a new dog!)
 - Number of visual elements allowed
 - Colour mood preferences
