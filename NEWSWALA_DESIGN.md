@@ -27,7 +27,7 @@ Every morning it automatically:
 | Pooja | Parent | Co-author of all messages |
 | Manishka | Elder daughter | Turning 18 on 24 October — can handle nuance and complexity |
 | Divyana | Younger daughter | Turning 11 on 12 July — needs warmth, clarity, simplicity |
-| Cocker Spaniel | Family pet | Always appears in the daily image as a memory cue |
+| Caramel | Cocker Spaniel Family pet | Always appears in the daily image as a memory cue |
 
 **Sign-off on every message:** *Love, Mama & Papa*
 
