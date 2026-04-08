@@ -801,8 +801,14 @@ def image_generator(image_prompt: str) -> dict:
             gen_kwargs["quality"] = settings["quality"]  # low | medium | high | auto
 
         response = oa_client.images.generate(**gen_kwargs)
-        url = response.data[0].url
-        revised = getattr(response.data[0], "revised_prompt", "")
+        img_data = response.data[0]
+        url = img_data.url  # dall-e-3 returns a URL; gpt-image-1 returns None here
+        revised = getattr(img_data, "revised_prompt", "")
+
+        if not url:
+            _step("No URL in response — model returned base64. Use dall-e-3 in instructions.md")
+            return {}
+
         _ok("Image generated successfully")
         _step(f"URL: {url[:80]}...")
         return {"url": url, "revised_prompt": revised}
