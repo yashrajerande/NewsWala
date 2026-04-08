@@ -2,7 +2,7 @@ name: NewsWala Daily Digest
 
 on:
   schedule:
-    - cron: "30 0 * * *"   # 00:30 UTC = 6:00 AM IST every day
+    - cron: "0 0 * * *"   # 00:00 UTC = 5:30 AM IST (buffer for GitHub delays)
   workflow_dispatch:         # also lets you trigger it manually from GitHub
 
 env:
