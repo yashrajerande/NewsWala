@@ -33,7 +33,6 @@ import json
 import re
 import sys
 import urllib.request
-import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -754,7 +753,7 @@ def image_generator(image_prompt: str) -> dict:
     """
     Generate the actual image using DALL-E 3.
 
-    Style is controlled by agents/06_image_generator/system_prompt.txt —
+    Style is controlled by agents/06_image_generator/instructions.md —
     edit the first line of that file to change art style (no Python needed).
 
     Returns:
@@ -767,13 +766,13 @@ def image_generator(image_prompt: str) -> dict:
         _step("OPENAI_API_KEY not set — skipping image generation (sending text prompt instead)")
         return {}
 
-    # Load settings from agents/06_image_generator/system_prompt.txt
+    # Load settings from agents/06_image_generator/instructions.md
     # First line = style prefix. Lines with "key: value" = model settings.
     config_text = _load_prompt("06_image_generator")
     config_lines = config_text.split("\n")
     style_guide  = config_lines[0].strip()
 
-    settings = {"model": "gpt-image-1", "size": "1024x1024", "quality": "medium"}
+    settings = {"model": "dall-e-3", "size": "1024x1024", "quality": "standard"}
     for line in config_lines:
         for key in settings:
             if line.strip().lower().startswith(f"{key}:"):
@@ -792,17 +791,13 @@ def image_generator(image_prompt: str) -> dict:
         if len(full_prompt) > 3900:
             full_prompt = full_prompt[:3900]
 
-        # Build kwargs — gpt-image-1 and dall-e-3 share the same API surface
         gen_kwargs = dict(model=settings["model"], prompt=full_prompt,
-                         size=settings["size"], n=1)
-        if settings["model"] == "dall-e-3":
-            gen_kwargs["quality"] = settings["quality"]  # standard | hd
-        else:
-            gen_kwargs["quality"] = settings["quality"]  # low | medium | high | auto
+                         size=settings["size"], n=1,
+                         quality=settings["quality"])
 
         response = oa_client.images.generate(**gen_kwargs)
         img_data = response.data[0]
-        url = img_data.url  # dall-e-3 returns a URL; gpt-image-1 returns None here
+        url = img_data.url
         revised = getattr(img_data, "revised_prompt", "")
 
         if not url:

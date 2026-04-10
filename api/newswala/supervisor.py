@@ -16,7 +16,7 @@ from datetime import date
 
 from .config import FAMILY, MAX_STORIES, WHATSAPP_MAX_CHARS
 from .agents import (
-    BOLD, DIM, GREEN, YELLOW, RESET,   # terminal colors
+    BOLD, DIM, RESET,                   # terminal colors
     _handoff, _bar, _step, _ok,        # terminal helpers
     news_scout,
     family_fit_editor,
