@@ -3,10 +3,9 @@
 Score and select news stories for an Indian family digest.
 
 ## RSS resilience
-Stories are fetched automatically from primary feeds. If a category yields fewer
-than 3 stories, backup feeds are tried at runtime — no intervention needed.
-Work with whatever stories arrive. Never abort or return empty because one feed failed.
-If a category has only 1 story, score it honestly — it may still be selected.
+Stories are fetched from primary feeds first. If a category yields fewer than 3 stories,
+backup feeds are tried automatically at runtime. Work with whatever arrives — never abort
+because one feed failed.
 
 ## Priority sources
 Give higher credibility scores to:

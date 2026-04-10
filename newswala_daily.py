@@ -3,7 +3,7 @@
 NewsWala — Daily scheduled runner.
 
 This script is designed to be called by an automated scheduler (cron, cloud scheduler, etc.).
-It runs the full pipeline and delivers the digest to Telegram and via email.
+It runs the full pipeline and delivers the digest to Telegram.
 
 Usage (scheduled, silent):
     python newswala_daily.py
@@ -55,19 +55,12 @@ def run():
         sys.exit(1)
 
     telegram_token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    telegram_chat  = os.environ.get("TELEGRAM_CHAT_ID")
-    gmail_address  = os.environ.get("GMAIL_ADDRESS")
-    gmail_password = os.environ.get("GMAIL_APP_PASSWORD")
+    telegram_chat = os.environ.get("TELEGRAM_CHAT_ID")
 
     if not telegram_token or not telegram_chat:
         log.warning(
             "TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set — "
             "will run pipeline but skip Telegram delivery"
-        )
-    if not gmail_address or not gmail_password:
-        log.warning(
-            "GMAIL_ADDRESS or GMAIL_APP_PASSWORD not set — "
-            "will run pipeline but skip email delivery"
         )
 
     # Run the pipeline
@@ -93,21 +86,6 @@ def run():
             log.error(f"Telegram delivery failed: {e}", exc_info=True)
     else:
         log.info("Telegram delivery skipped (credentials not configured)")
-
-    # Deliver via email
-    if gmail_address and gmail_password:
-        try:
-            from newswala.email_sender import send_digest as send_email
-            output = {k: v for k, v in package.items() if k != "_rendered"}
-            ok = send_email(output, gmail_address=gmail_address, gmail_app_password=gmail_password)
-            if ok:
-                log.info("Digest emailed to all recipients successfully")
-            else:
-                log.warning("Some emails failed to send")
-        except Exception as e:
-            log.error(f"Email delivery failed: {e}", exc_info=True)
-    else:
-        log.info("Email delivery skipped (GMAIL_ADDRESS / GMAIL_APP_PASSWORD not configured)")
 
     # Save JSON output for the day
     try:

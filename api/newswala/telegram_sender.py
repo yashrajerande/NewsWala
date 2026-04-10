@@ -200,29 +200,16 @@ def send_digest(package: dict, token: Optional[str] = None, chat_id: Optional[st
             print(f"  [telegram] Image prompt send failed: {e}")
 
     # ── Message 6: Quality + cost summary ────────────────────────────────────
-    confidence    = qc.get("factual_confidence", "medium")
-    run_cost      = package.get("run_cost", 0.0)
-    monthly       = package.get("monthly_spend", {})
-    month_total   = monthly.get("total_usd", run_cost)
-    month_runs    = monthly.get("runs", 1)
-    budget        = monthly.get("budget_usd", 5.0)
-    month_pct     = (month_total / budget * 100) if budget else 0
+    confidence  = qc.get("factual_confidence", "medium")
+    run_cost    = package.get("run_cost", 0.0)
+    monthly     = package.get("monthly_spend", {})
+    month_total = monthly.get("total_usd", run_cost)
+    month_runs  = monthly.get("runs", 1)
+    budget      = monthly.get("budget_usd", 5.0)
+    month_pct   = (month_total / budget * 100) if budget else 0
 
-    # Cost alert thresholds (per run)
-    if run_cost > 0.50:
-        run_icon = "🚨 HIGH"
-    elif run_cost > 0.15:
-        run_icon = "⚠️  WATCH"
-    else:
-        run_icon = "✅"
-
-    # Monthly budget alert
-    if month_pct >= 90:
-        budget_icon = "🚨"
-    elif month_pct >= 60:
-        budget_icon = "⚠️"
-    else:
-        budget_icon = "✅"
+    run_icon    = "🚨 HIGH" if run_cost > 0.50 else ("⚠️  WATCH" if run_cost > 0.15 else "✅")
+    budget_icon = "🚨" if month_pct >= 90 else ("⚠️" if month_pct >= 60 else "✅")
 
     summary = (
         f"{'─'*30}\n"
@@ -237,7 +224,7 @@ def send_digest(package: dict, token: Optional[str] = None, chat_id: Optional[st
     if run_cost > 0.15:
         summary += "⚠️  Run cost above target — check GitHub Actions log\n"
     if month_pct >= 90:
-        summary += f"🚨 Monthly budget nearly exhausted!\n"
+        summary += "🚨 Monthly budget nearly exhausted!\n"
 
     try:
         _post(token, "sendMessage", {

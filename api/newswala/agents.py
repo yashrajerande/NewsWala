@@ -55,7 +55,6 @@ _HISTORY_DAYS = 14   # remember stories from the last 14 days
 
 # --- monthly spend tracker ---------------------------------------------------
 # Stored at project root: ~/NewsWala/newswala_monthly_spend.json
-# Accumulates real API spend per calendar month so you know exactly what you've spent.
 _MONTHLY_SPEND_FILE = Path(__file__).resolve().parents[2] / "newswala_monthly_spend.json"
 _MONTHLY_BUDGET_USD = 5.00
 
@@ -254,10 +253,7 @@ def save_history(stories: list[dict], run_date: str):
 
 
 def load_monthly_spend() -> dict:
-    """
-    Load the monthly spend ledger.
-    Returns a dict keyed by YYYY-MM: {"total_usd": float, "runs": int, "last_run": str}
-    """
+    """Load the monthly spend ledger keyed by YYYY-MM."""
     if not _MONTHLY_SPEND_FILE.exists():
         return {}
     try:
@@ -267,25 +263,19 @@ def load_monthly_spend() -> dict:
 
 
 def record_monthly_spend(run_cost: float, run_date: str) -> dict:
-    """
-    Add this run's cost to the monthly ledger. Returns the updated month entry:
-    {"total_usd": float, "runs": int, "last_run": str, "budget_usd": float}
-    """
-    month_key = run_date[:7]          # "YYYY-MM"
+    """Accumulate this run's cost into the monthly ledger. Returns the updated month entry."""
+    month_key = run_date[:7]
     ledger = load_monthly_spend()
-
     entry = ledger.get(month_key, {"total_usd": 0.0, "runs": 0, "last_run": ""})
-    entry["total_usd"] = round(entry["total_usd"] + run_cost, 6)
-    entry["runs"]      = entry["runs"] + 1
-    entry["last_run"]  = run_date
+    entry["total_usd"]  = round(entry["total_usd"] + run_cost, 6)
+    entry["runs"]       = entry["runs"] + 1
+    entry["last_run"]   = run_date
     entry["budget_usd"] = _MONTHLY_BUDGET_USD
-
-    ledger[month_key] = entry
+    ledger[month_key]   = entry
     try:
         _MONTHLY_SPEND_FILE.write_text(json.dumps(ledger, indent=2, ensure_ascii=False))
     except Exception as e:
         _step(f"Could not save monthly spend: {e}")
-
     return entry
 
 
@@ -324,11 +314,10 @@ def _parse_json(text: str, shape: str = "object") -> dict | list:
 # Cost: ~$0.003/day  (was ~$1.50/day with web_search)
 # ---------------------------------------------------------------------------
 
-# RSS feeds by category — split into primary and backup tiers.
+# RSS feeds — split into primary and backup tiers per category.
 # Primary feeds are tried first. If fewer than _MIN_STORIES_PER_CATEGORY stories
-# are collected, backup feeds are tried automatically at runtime — no code change needed.
-# To add a new source: drop it into "primary" or "backup" for the right category.
-_MIN_STORIES_PER_CATEGORY = 3   # trigger backup tier if primary yields fewer than this
+# are collected, backup feeds are tried automatically at runtime.
+_MIN_STORIES_PER_CATEGORY = 3
 
 _RSS_FEEDS: dict[str, dict[str, list[tuple[str, str]]]] = {
     "Economics": {
@@ -462,8 +451,7 @@ def news_scout(run_date: str) -> list[dict]:
     cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
 
     # --- fetch all RSS feeds (no AI, no cost) --------------------------------
-    # Primary feeds are tried first. If a category comes up short
-    # (< _MIN_STORIES_PER_CATEGORY), backup feeds are tried automatically.
+    # Primary feeds tried first; backups used automatically if < _MIN_STORIES_PER_CATEGORY
     all_stories: list[dict] = []
     for category, tier_feeds in _RSS_FEEDS.items():
         _step(f"Fetching {category}...")
@@ -486,7 +474,6 @@ def news_scout(run_date: str) -> list[dict]:
                     _step(f"  ✗ {source}: no stories / failed{label}")
 
         _collect(tier_feeds["primary"], "")
-
         if len(cat_stories) < _MIN_STORIES_PER_CATEGORY:
             _step(f"  Only {len(cat_stories)} stories — trying backup feeds...")
             _collect(tier_feeds["backup"], " (backup)")
@@ -814,8 +801,14 @@ def image_generator(image_prompt: str) -> dict:
             gen_kwargs["quality"] = settings["quality"]  # low | medium | high | auto
 
         response = oa_client.images.generate(**gen_kwargs)
-        url = response.data[0].url
-        revised = getattr(response.data[0], "revised_prompt", "")
+        img_data = response.data[0]
+        url = img_data.url  # dall-e-3 returns a URL; gpt-image-1 returns None here
+        revised = getattr(img_data, "revised_prompt", "")
+
+        if not url:
+            _step("No URL in response — model returned base64. Use dall-e-3 in instructions.md")
+            return {}
+
         _ok("Image generated successfully")
         _step(f"URL: {url[:80]}...")
         return {"url": url, "revised_prompt": revised}

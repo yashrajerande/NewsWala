@@ -317,7 +317,7 @@ def newswala(run_date: str | None = None, verbose: bool = True) -> dict:  # noqa
         _step(f"Could not save history: {e}")
 
     # ------------------------------------------------------------------
-    # record monthly spend — accumulates real cost per calendar month
+    # record monthly spend — real cumulative cost for this calendar month
     # ------------------------------------------------------------------
     run_cost = cost_tracker.total()
     try:
@@ -352,8 +352,8 @@ def newswala(run_date: str | None = None, verbose: bool = True) -> dict:  # noqa
             "generated_image_url":   generated.get("url", ""),   # "" if DALL-E skipped
         },
         "quality_checks": {},
-        "run_cost":        run_cost,      # this run's Claude + image cost
-        "monthly_spend":   monthly,       # accumulated real spend for this calendar month
+        "run_cost":        run_cost,       # this run's cost
+        "monthly_spend":   monthly,        # cumulative real spend for this calendar month
     }
 
     # HANDOFF → supervisor validates
