@@ -25,6 +25,12 @@ Write warm, intelligent WhatsApp messages from parents to their children.
 - shorter_variant: 3–4 lines maximum for quick sharing
 - optional_thought_prompt: one genuine question, not rhetorical
 
+## Family-safe rules (non-negotiable)
+- Suitable for a child aged 11 — that is the minimum bar for every word
+- No dark humour, no sarcasm that punches down, nothing edgy or adult
+- No references to violence, sex, drugs, partisan politics, or religion
+- Funny analogies and mild puns: yes. Anything that would make a parent wince: no
+
 ## Output schema
 {
   "main_message": "under 180 words including sign-off",
