@@ -54,4 +54,24 @@ AVOID_TOPICS = [
 MAX_STORIES = 2
 WHATSAPP_MAX_CHARS = 800  # comfortable WhatsApp read length
 
-MODEL = "claude-opus-4-6"
+# Email recipients — each gets a personalised morning digest
+EMAIL_RECIPIENTS = [
+    {
+        "email": "Divyana.erande@oberoi-is.net",
+        "name": "Divyana",
+        "nickname": "Popcorn",
+        "alt_nickname": "Divvydoo",
+    },
+    {
+        "email": "manishka.erande@oberoi-is.net",
+        "name": "Manishka",
+        "nickname": "Laddoo",
+        "alt_nickname": "Mannuu",
+    },
+    {
+        "email": "Pooja.Hathi@gmail.com",
+        "name": "Pooja",
+        "nickname": "Doll",
+        "alt_nickname": "Darling",
+    },
+]

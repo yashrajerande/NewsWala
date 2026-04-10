@@ -2,7 +2,7 @@ name: NewsWala Daily Digest
 
 on:
   schedule:
-    - cron: "30 0 * * *"   # 00:30 UTC = 6:00 AM IST every day
+    - cron: "0 0 * * *"   # 00:00 UTC = 5:30 AM IST (buffer for GitHub Actions delays)
   workflow_dispatch:         # also lets you trigger it manually from GitHub
 
 env:
@@ -26,8 +26,10 @@ jobs:
 
       - name: Run NewsWala
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
-          OPENAI_API_KEY:     ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
+          TELEGRAM_BOT_TOKEN:  ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:    ${{ secrets.TELEGRAM_CHAT_ID }}
+          OPENAI_API_KEY:      ${{ secrets.OPENAI_API_KEY }}
+          GMAIL_ADDRESS:       ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD:  ${{ secrets.GMAIL_APP_PASSWORD }}
         run: python newswala_daily.py
