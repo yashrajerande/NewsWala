@@ -70,6 +70,11 @@ def send_digest(
             "Create one at: myaccount.google.com → Security → App passwords"
         )
 
+    # Strip all whitespace including non-breaking spaces (\xa0) that sneak in
+    # when copy-pasting Google's app password from the browser.
+    gmail_address      = gmail_address.strip()
+    gmail_app_password = "".join(c for c in gmail_app_password if c.isascii() and not c.isspace())
+
     wa       = package.get("whatsapp_output", {})
     img      = package.get("image_output", {})
     stories  = package.get("selected_stories", [])
