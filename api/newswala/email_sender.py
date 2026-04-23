@@ -18,6 +18,8 @@ Setup (one-time, takes ~5 minutes):
 import os
 import smtplib
 import ssl
+import urllib.request
+from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional
@@ -68,6 +70,11 @@ def send_digest(
             "Create one at: myaccount.google.com → Security → App passwords"
         )
 
+    # Strip all whitespace including non-breaking spaces (\xa0) that sneak in
+    # when copy-pasting Google's app password from the browser.
+    gmail_address      = gmail_address.strip()
+    gmail_app_password = "".join(c for c in gmail_app_password if c.isascii() and not c.isspace())
+
     wa       = package.get("whatsapp_output", {})
     img      = package.get("image_output", {})
     stories  = package.get("selected_stories", [])
@@ -78,6 +85,17 @@ def send_digest(
     short_ver = wa.get("shorter_variant", "")
     image_url = img.get("generated_image_url", "")
     concept   = img.get("concept", "")
+
+    # Download image once while the DALL-E URL is still fresh.
+    # Embed as bytes so it works regardless of URL expiry or email client blocking.
+    image_bytes = None
+    if image_url:
+        try:
+            with urllib.request.urlopen(image_url, timeout=20) as resp:
+                image_bytes = resp.read()
+            print(f"  [email] Image downloaded ({len(image_bytes) // 1024} KB) — will embed inline")
+        except Exception as e:
+            print(f"  [email] Could not download image ({e}) — email will send without it")
 
     success = True
 
@@ -101,7 +119,7 @@ def send_digest(
                         main_msg=main_msg,
                         lesson=lesson,
                         short_ver=short_ver,
-                        image_url=image_url,
+                        image_bytes=image_bytes,
                         concept=concept,
                     )
                     print(f"  [email] ✅ Sent to {recipient['name']} <{recipient['email']}>")
@@ -130,14 +148,16 @@ def _send_one(
     main_msg: str,
     lesson: str,
     short_ver: str,
-    image_url: str,
+    image_bytes: Optional[bytes],
     concept: str,
 ) -> None:
-    """Build and send one personalised email."""
+    """Build and send one personalised email with the image embedded inline."""
     name     = recipient["name"]
     nickname = recipient["nickname"]
-
     subject  = f"🐾 Good morning, {nickname}! — NewsWala {run_date}"
+
+    # Use cid:newsimage when we have bytes — no external URL, no blocking.
+    img_src = "cid:newsimage" if image_bytes else ""
 
     html = _build_html(
         nickname=nickname,
@@ -146,25 +166,44 @@ def _send_one(
         main_msg=main_msg,
         lesson=lesson,
         short_ver=short_ver,
-        image_url=image_url,
+        img_src=img_src,
         concept=concept,
     )
-    text = _build_plain(
+    plain = _build_plain(
         nickname=nickname,
         run_date=run_date,
         main_msg=main_msg,
         lesson=lesson,
     )
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"]    = f"NewsWala 🐾 <{sender}>"
-    msg["To"]      = f"{name} <{recipient['email']}>"
+    # MIME structure:
+    #   multipart/mixed
+    #     multipart/related
+    #       multipart/alternative
+    #         text/plain
+    #         text/html          ← references cid:newsimage
+    #       image/png            ← inline, Content-ID: newsimage
+    outer = MIMEMultipart("mixed")
+    outer["Subject"] = subject
+    outer["From"]    = f"NewsWala 🐾 <{sender}>"
+    outer["To"]      = f"{name} <{recipient['email']}>"
 
-    msg.attach(MIMEText(text, "plain", "utf-8"))
-    msg.attach(MIMEText(html, "html",  "utf-8"))
+    related = MIMEMultipart("related")
+    outer.attach(related)
 
-    smtp.sendmail(sender, recipient["email"], msg.as_string())
+    alt = MIMEMultipart("alternative")
+    related.attach(alt)
+
+    alt.attach(MIMEText(plain, "plain", "utf-8"))
+    alt.attach(MIMEText(html,  "html",  "utf-8"))
+
+    if image_bytes:
+        img_part = MIMEImage(image_bytes)
+        img_part.add_header("Content-ID", "<newsimage>")
+        img_part.add_header("Content-Disposition", "inline", filename="newsimage.png")
+        related.attach(img_part)
+
+    smtp.sendmail(sender, recipient["email"], outer.as_string())
 
 
 def _build_html(
@@ -174,7 +213,7 @@ def _build_html(
     main_msg: str,
     lesson: str,
     short_ver: str,
-    image_url: str,
+    img_src: str,
     concept: str,
 ) -> str:
     """Return a full HTML email as a string."""
@@ -201,13 +240,13 @@ def _build_html(
           </td>
         </tr>"""
 
-    # Image block
+    # Image block — uses cid: reference so it's embedded, not blocked
     image_block = ""
-    if image_url:
+    if img_src:
         cap = _esc_html(concept[:200]) if concept else "Today's memory image"
         image_block = f"""
         <tr><td style="padding:20px 0 0;">
-          <img src="{image_url}" alt="Today's image"
+          <img src="{img_src}" alt="Today's image"
                style="max-width:100%;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.12);">
           <p style="margin:8px 0 0;color:#888;font-size:13px;font-style:italic;">{cap}</p>
         </td></tr>"""
