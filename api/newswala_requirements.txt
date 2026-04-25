@@ -3,3 +3,4 @@
 anthropic>=0.40.0
 python-dotenv>=0.14.0
 openai>=1.0.0        # for DALL-E 3 image generation (optional — set OPENAI_API_KEY to enable)
+youtube-transcript-api>=0.6.0  # for newswala_share.py YouTube support (optional)
