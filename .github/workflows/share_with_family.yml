@@ -1,0 +1,45 @@
+name: Share with Family
+
+on:
+  workflow_dispatch:
+    inputs:
+      content:
+        description: "Paste a URL, YouTube link, or article text"
+        required: true
+        type: string
+      no_image:
+        description: "Skip image generation (faster)"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  share:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r api/newswala_requirements.txt
+
+      - name: Share with family
+        env:
+          ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY:     ${{ secrets.OPENAI_API_KEY }}
+          GMAIL_ADDRESS:      ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          FLAGS=""
+          if [ "${{ inputs.no_image }}" = "true" ]; then
+            FLAGS="--no-image"
+          fi
+          python newswala_share.py $FLAGS "${{ inputs.content }}"
