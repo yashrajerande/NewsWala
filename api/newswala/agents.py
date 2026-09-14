@@ -13,7 +13,7 @@ Model assignments:
 ├──────────────────────┼──────────────────┼──────────────────────────────┤
 │ news_scout           │ Haiku 4.5        │ RSS fetch + scoring (cheap)  │
 │ family_fit_editor    │ Haiku 4.5        │ structured filtering, cheap  │
-│ whatsapp_copywriter  │ Sonnet 4.6       │ needs writing quality        │
+│ whatsapp_copywriter  │ Sonnet 5         │ needs writing quality        │
 │ memory_cue_designer  │ Haiku 4.5        │ simple creative task         │
 │ image_maker          │ Haiku 4.5        │ mechanical prompt writing    │
 └──────────────────────┴──────────────────┴──────────────────────────────┘
@@ -41,9 +41,9 @@ import anthropic
 from .config import MAX_STORIES
 
 # --- models ------------------------------------------------------------------
-SCOUT_MODEL = "claude-haiku-4-5"   # RSS scoring — no web search needed → cheap
-WRITE_MODEL = "claude-sonnet-4-6"  # WhatsApp copy needs quality
-FAST_MODEL  = "claude-haiku-4-5"   # filtering, image prompts — cheap & fast
+SCOUT_MODEL = "claude-haiku-4-5-20251001"   # RSS scoring — no web search needed → cheap
+WRITE_MODEL = "claude-sonnet-5"             # WhatsApp copy needs quality
+FAST_MODEL  = "claude-haiku-4-5-20251001"   # filtering, image prompts — cheap & fast
 
 client = anthropic.Anthropic()
 
@@ -172,9 +172,9 @@ def _stream(chunk: str):
 # ---------------------------------------------------------------------------
 
 _PRICES = {
-    "claude-sonnet-4-6": {"in": 3.00,  "out": 15.00},
-    "claude-haiku-4-5":  {"in": 1.00,  "out":  5.00},
-    "claude-opus-4-6":   {"in": 5.00,  "out": 25.00},
+    "claude-sonnet-5":           {"in": 3.00,  "out": 15.00},
+    "claude-haiku-4-5-20251001": {"in": 1.00,  "out":  5.00},
+    "claude-opus-5":             {"in": 15.00, "out": 75.00},
 }
 
 class _CostTracker:
